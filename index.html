@@ -358,7 +358,7 @@ function renderToday(v){
   if(!tot)v.appendChild(el('<div class="att"><div class="ic ok">✓</div><div><div class="tt">Все в порядке</div><div class="ss">Долгов и пропусков нет</div></div></div>'));
 
   var ts=allTodaySessions(now);
-  if(ts.length){v.appendChild(el('<h2 class="sec">Сегодня в зале</h2>'));ts.forEach(function(x){var c=gcol(x.g.id),cnt=inGroup(x.g.id).length;var tag=x.start>now?'<span class="tag" style="background:color-mix(in srgb,var(--g1) 16%,transparent);color:var(--g1)">СКОРО</span>':'<span class="tag" style="background:var(--card2);color:var(--mut)">ПРОШЛО</span>';
+  if(ts.length){v.appendChild(el('<h2 class="sec">Сегодня в зале</h2>'));ts.forEach(function(x){var c=gcol(x.g.id),cnt=inGroup(x.g.id).length;var end=new Date(x.start.getTime()+x.se.dur*60000);var tag=now<x.start?'<span class="tag" style="background:color-mix(in srgb,var(--g1) 16%,transparent);color:var(--g1)">СКОРО</span>':now<=end?'<span class="tag" style="background:var(--g1);color:var(--on-g)">ИДЕТ</span>':'<span class="tag" style="background:var(--card2);color:var(--mut)">ПРОШЛО</span>';
     var r=el('<div class="tl"><span class="tm mono">'+x.se.time+'</span><span class="bar" style="background:'+c+'"></span><div><div class="g">'+esc(x.g.name)+' · '+esc(x.g.level.split(" · ")[0])+'</div><div class="m">'+cnt+' чел · '+x.se.dur+' мин</div></div>'+tag+'</div>');
     r.onclick=function(){openRoster(x.g.id,dstr(now));};v.appendChild(r);});}
 }
