@@ -237,9 +237,31 @@
 </div>
 
 <div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+<div id="login" style="position:fixed;inset:0;background:var(--bg);z-index:100;display:none;align-items:center;justify-content:center;padding:24px">
+  <div style="width:100%;max-width:340px">
+    <div style="text-align:center;margin-bottom:22px"><div style="width:72px;height:72px;border-radius:50%;background:#fff;margin:0 auto 14px;overflow:hidden;display:flex;align-items:center;justify-content:center"><img id="loginlogo" style="width:72px;height:72px" alt=""></div><div style="font:800 22px/1 'Manrope',sans-serif">VOIN TEAM</div><div style="color:var(--mut);font-size:13px;margin-top:6px">Дневник тренера</div></div>
+    <input id="lgmail" class="field" type="email" placeholder="Почта" autocapitalize="off" autocorrect="off">
+    <input id="lgpass" class="field" type="password" placeholder="Пароль">
+    <button id="lgbtn" class="btn acc">Войти</button>
+    <div id="lgerr" style="color:var(--red);font-size:12.5px;text-align:center;margin-top:10px;min-height:16px"></div>
+  </div>
+</div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
 "use strict";
+/* ===== FIREBASE CONFIG ===== вставь сюда блок из своего проекта (значения в кавычках) ===== */
+var FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBSqDPN-KHO6Zs9c0Pf9aqlQQgCQ81OEe8",
+  authDomain: "voin-team.firebaseapp.com",
+  projectId: "voin-team",
+  storageBucket: "voin-team.firebasestorage.app",
+  messagingSenderId: "32937303865",
+  appId: "1:32937303865:web:a1d40eb2f8e9f3101492e8"
+};
+var FIREBASE_ENABLED = !!(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId);
 function gidx(gid){for(var i=0;i<state.groups.length;i++){if(state.groups[i].id===gid)return i;}return 0;}
 function gvar(gid){return '--g'+((gidx(gid)%6)+1);}
 function gcol(gid){return getComputedStyle(document.documentElement).getPropertyValue(gvar(gid)).trim()||'#888';}
@@ -267,8 +289,10 @@ function isMissing(s,t){var lp=lastPresent(s);if(!lp)return (s.payments&&s.payme
 
 /* ---- хранилище ---- */
 var KEY='voin_v3', state=null;
-function load(){try{var r=localStorage.getItem(KEY);if(r){state=JSON.parse(r);return;}}catch(e){}state=seed();save();}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+var FBDOC=null, fbReady=false, fbWriteT=null, fbApplying=false;
+function localLoad(){try{var r=localStorage.getItem(KEY);if(r)return JSON.parse(r);}catch(e){}return null;}
+function saveLocal(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+function save(){saveLocal();if(fbReady&&FBDOC&&!fbApplying){clearTimeout(fbWriteT);fbWriteT=setTimeout(function(){try{FBDOC.set(state);}catch(e){}},600);}}
 function seed(){
   var now=new Date(),m=mk(now);
   function ago(x){var d=new Date(now);d.setDate(d.getDate()-x);return dstr(d);}
@@ -559,7 +583,11 @@ function renderSettings(v){
   v.appendChild((function(){var r=el('<div class="row2"><div><div class="t">Перенос остатка</div><div class="s">'+(state.settings.carryMode==='accumulate'?'платит за 12, сохраненное идет плюсом':'платит меньшей суммой до 12')+'</div></div><div class="arr">›</div></div>');r.onclick=function(){rulesSheet();};return r;})());
 
   v.appendChild(el('<h2 class="sec">О приложении</h2>'));
-  v.appendChild(el('<div class="row2"><div><div class="t">VOIN TEAM · дневник тренера</div><div class="s">данные хранятся на этом устройстве</div></div></div>'));
+  var synced=FIREBASE_ENABLED&&fbReady&&FBDOC;
+  v.appendChild(el('<div class="row2"><div><div class="t">VOIN TEAM · дневник тренера</div><div class="s">'+(synced?'облако · синхронизация включена':'данные хранятся на этом устройстве')+'</div></div></div>'));
+  if(FIREBASE_ENABLED&&typeof firebase!=='undefined'&&firebase.auth&&firebase.auth().currentUser){
+    var out=el('<button class="btn danger">Выйти из аккаунта</button>');out.onclick=function(){try{firebase.auth().signOut();}catch(e){}};v.appendChild(out);
+  }
 }
 
 /* ---- модалки ---- */
@@ -668,7 +696,39 @@ function personSheet(s,defGroup){
 
 document.querySelectorAll('.nav button').forEach(function(b){b.onclick=function(){tab=b.getAttribute('data-t');roster=null;card=null;groupView=null;payView=false;listView=null;document.querySelectorAll('.nav button').forEach(function(x){x.classList.remove('on');});b.classList.add('on');render();};});
 
-load();applyTheme();render();
+/* ===== Firebase ===== */
+function showLogin(auth){
+  var lg=document.getElementById('login');lg.style.display='flex';
+  var img=document.getElementById('loginlogo'),src=document.querySelector('.ava img');if(img&&src)img.src=src.src;
+  var mail=document.getElementById('lgmail'),pass=document.getElementById('lgpass'),btn=document.getElementById('lgbtn'),err=document.getElementById('lgerr');
+  btn.onclick=function(){err.textContent='';btn.textContent='Вход...';
+    auth.signInWithEmailAndPassword((mail.value||'').trim(),pass.value||'').then(function(){}).catch(function(e){btn.textContent='Войти';err.textContent='Не удалось войти. Проверь почту и пароль.';});
+  };
+  pass.onkeydown=function(e){if(e.key==='Enter')btn.click();};
+}
+function hideLogin(){var lg=document.getElementById('login');if(lg)lg.style.display='none';}
+function initFirebase(){
+  try{firebase.initializeApp(FIREBASE_CONFIG);}catch(e){}
+  var auth=firebase.auth(),db=firebase.firestore();
+  try{db.enablePersistence({synchronizeTabs:true}).catch(function(){});}catch(e){}
+  auth.onAuthStateChanged(function(user){
+    if(!user){FBDOC=null;fbReady=false;showLogin(auth);return;}
+    hideLogin();
+    FBDOC=db.collection('voin').doc('state');
+    FBDOC.onSnapshot(function(snap){
+      if(snap.exists){var d=snap.data();if(d&&d.groups&&d.students){fbApplying=true;state=d;saveLocal();applyTheme();render();fbApplying=false;}}
+      else{try{FBDOC.set(state);}catch(e){}}
+      fbReady=true;
+    },function(e){fbReady=true;});
+    fbReady=true;
+  });
+}
+function boot(){
+  state=localLoad()||seed();saveLocal();
+  applyTheme();render();
+  if(FIREBASE_ENABLED&&typeof firebase!=='undefined'){initFirebase();}
+}
+boot();
 </script>
 
 </body></html>
