@@ -104,7 +104,7 @@
   .subtab{flex:1;text-align:center;font:700 13px/1 'Manrope';padding:9px;border-radius:9px;background:none;border:none;color:var(--mut)}
   .subtab.on{background:var(--card2);color:var(--ink)}
 
-  .search{width:100%;background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:13px;padding:12px 14px;font-size:15px;font-family:'Manrope';margin-bottom:12px}
+  .search{width:100%;background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:13px;padding:12px 14px;font-size:16px;font-family:'Manrope';margin-bottom:12px}
   .search::placeholder{color:var(--mut2)}
 
   .prow{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 13px;margin-bottom:8px;display:flex;align-items:center;gap:12px;transition:border-color .12s;box-shadow:var(--shadow)}
@@ -154,7 +154,7 @@
   .opt{display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px;margin-bottom:8px;font-weight:600;font-size:15px}
   .opt .d{width:10px;height:10px;border-radius:50%}
   .opt.on{border-color:var(--g1)}
-  .field{width:100%;background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:11px;padding:12px;font-size:15px;margin-bottom:10px;font-family:'Manrope'}
+  .field{width:100%;background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:11px;padding:12px;font-size:16px;margin-bottom:10px;font-family:'Manrope'}
   label.lbl{display:block;color:var(--mut);font-size:11.5px;margin:2px 2px 6px;font-weight:600}
   .link{color:var(--mut);font-size:13px;text-align:center;padding:10px}
   .empty{color:var(--mut);text-align:center;padding:34px 10px;font-size:13.5px}
@@ -247,6 +247,8 @@
   </div>
 </div>
 
+<div id="sync" style="position:fixed;inset:0;background:var(--bg);z-index:99;display:none;align-items:center;justify-content:center;color:var(--mut);font-size:14px;letter-spacing:.3px">Загрузка данных...</div>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -278,7 +280,11 @@ var MNF=['','Январь','Февраль','Март','Апрель','Май','
 function SPM(){return state.settings.sessionsPerMonth;}
 function balanceOf(s){var p=(s.payments||[]).length*SPM(),sp=0,a=s.attendance||{};for(var d in a){if(a[d]==='present'||a[d]==='absent')sp++;}return p-sp;}
 function paidThrough(s){var p=s.payments||[];return p.length?p.slice().sort().pop():null;}
-function isDebtor(s,t){if(s.type!=='monthly')return false;var c=mk(t),pt=paidThrough(s);if(pt&&pt>=c)return false;return t.getDate()>state.settings.payDay;}
+function unpaid(s,t){if(s.type!=='monthly')return false;var pt=paidThrough(s);return !(pt&&pt>=mk(t));}
+function isDebtor(s,t){return unpaid(s,t)&&t.getDate()>state.settings.payDay;}
+function balText(s){var b=balanceOf(s);return b<0?('в долг '+(-b)+' зан.'):('остаток '+b+' зан.');}
+function tparts(t){var m=/^\s*(\d{1,2})[:.](\d{1,2})\s*$/.exec(String(t||''));return m?[Math.min(23,+m[1]),Math.min(59,+m[2])]:[0,0];}
+function tnorm(t){var p=tparts(t);return pad(p[0])+':'+pad(p[1]);}
 function medOk(s,t){if(!s.med||!s.med.until)return false;return s.med.until>=dstr(t);}
 function marksSorted(s){var a=s.attendance||{};return Object.keys(a).sort().map(function(d){return a[d];});}
 function missedStreak(s){var m=marksSorted(s),c=0;for(var i=m.length-1;i>=0;i--){if(m[i]==='absent')c++;else break;}return c;}
@@ -288,11 +294,17 @@ function lastPresent(s){var a=s.attendance||{},d=Object.keys(a).filter(function(
 function isMissing(s,t){var lp=lastPresent(s);if(!lp)return (s.payments&&s.payments.length)>0;return Math.floor((t-new Date(lp+'T00:00:00'))/86400000)>14;}
 
 /* ---- хранилище ---- */
-var KEY='voin_v3', state=null;
-var FBDOC=null, fbReady=false, fbWriteT=null, fbApplying=false;
+var KEY='voin_v3', DKEY='voin_dirty', state=null;
+var FBDOC=null, fbReady=false, fbWriteT=null, fbApplying=false, fbSeq=0;
+function isDirty(){try{return localStorage.getItem(DKEY)==='1';}catch(e){return false;}}
+function setDirty(v){try{if(v)localStorage.setItem(DKEY,'1');else localStorage.removeItem(DKEY);}catch(e){}}
+function canon(o){if(o===null||typeof o!=='object')return JSON.stringify(o);if(Array.isArray(o))return '['+o.map(canon).join(',')+']';return '{'+Object.keys(o).sort().map(function(k){return JSON.stringify(k)+':'+canon(o[k]);}).join(',')+'}';}
+function fbFlush(){if(!FBDOC||fbApplying)return;clearTimeout(fbWriteT);fbWriteT=null;var seq=fbSeq;setDirty(true);try{FBDOC.set(state).then(function(){if(seq===fbSeq)setDirty(false);}).catch(function(){});}catch(e){}}
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'&&fbWriteT)fbFlush();});
+window.addEventListener('pagehide',function(){if(fbWriteT)fbFlush();});
 function localLoad(){try{var r=localStorage.getItem(KEY);if(r)return JSON.parse(r);}catch(e){}return null;}
 function saveLocal(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
-function save(){saveLocal();if(fbReady&&FBDOC&&!fbApplying){clearTimeout(fbWriteT);fbWriteT=setTimeout(function(){try{FBDOC.set(state);}catch(e){}},600);}}
+function save(){saveLocal();if(!FIREBASE_ENABLED||fbApplying)return;fbSeq++;setDirty(true);if(fbReady&&FBDOC){clearTimeout(fbWriteT);fbWriteT=setTimeout(fbFlush,400);}}
 function seed(){
   var now=new Date(),m=mk(now);
   function ago(x){var d=new Date(now);d.setDate(d.getDate()-x);return dstr(d);}
@@ -325,8 +337,8 @@ function applyTheme(){var t=state.settings.theme,r=document.documentElement;if(t
   if((state.settings.skin||'standard')==='garmin')r.setAttribute('data-skin','garmin');else r.removeAttribute('data-skin');}
 
 /* ---- сессии ---- */
-function allTodaySessions(now){var wd=now.getDay(),res=[];state.groups.forEach(function(g){g.sessions.forEach(function(se){if(se.wd===wd){var st=new Date(now);st.setHours(+se.time.slice(0,2),+se.time.slice(3),0,0);res.push({g:g,se:se,start:st});}});});res.sort(function(a,b){return a.start-b.start;});return res;}
-function nextSession(now){var best=null;for(var off=0;off<14;off++){var day=new Date(now);day.setDate(day.getDate()+off);var wd=day.getDay();state.groups.forEach(function(g){g.sessions.forEach(function(se){if(se.wd!==wd)return;var st=new Date(day);st.setHours(+se.time.slice(0,2),+se.time.slice(3),0,0);var en=new Date(st.getTime()+se.dur*60000);if(en<now)return;if(!best||st<best.start)best={g:g,se:se,start:st,end:en,off:off};});});if(best&&off>=1)break;}return best;}
+function allTodaySessions(now){var wd=now.getDay(),res=[];state.groups.forEach(function(g){g.sessions.forEach(function(se){if(se.wd===wd){var st=new Date(now),tp=tparts(se.time);st.setHours(tp[0],tp[1],0,0);res.push({g:g,se:se,start:st});}});});res.sort(function(a,b){return a.start-b.start;});return res;}
+function nextSession(now){var best=null;for(var off=0;off<14;off++){var day=new Date(now);day.setDate(day.getDate()+off);var wd=day.getDay();state.groups.forEach(function(g){g.sessions.forEach(function(se){if(se.wd!==wd)return;var st=new Date(day),tp=tparts(se.time);st.setHours(tp[0],tp[1],0,0);var en=new Date(st.getTime()+se.dur*60000);if(en<now)return;if(!best||st<best.start)best={g:g,se:se,start:st,end:en,off:off};});});if(best&&off>=1)break;}return best;}
 
 /* ---- утилиты ---- */
 function ini(n){var p=n.trim().split(/\s+/);return((p[0]||'')[0]||'')+((p[1]||'')[0]||'');}
@@ -337,7 +349,7 @@ function grp(id){return state.groups.filter(function(g){return g.id===id;})[0];}
 function relTime(now,st){var mins=Math.round((st-now)/60000);if(mins<0)return 'идет';if(mins<60)return 'через '+mins+' мин';var h=Math.floor(mins/60),mm=mins%60;return 'через '+h+' ч'+(mm?' '+mm+' мин':'');}
 function ringSVG(pct,color,size,stroke){size=size||62;stroke=stroke||7;pct=Math.max(0,Math.min(100,pct));var r=(size-stroke)/2,cx=size/2,c=2*Math.PI*r,off=c*(1-pct/100);return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'"><g transform="rotate(-90 '+cx+' '+cx+')"><circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="var(--line2)" stroke-width="'+stroke+'"/><circle cx="'+cx+'" cy="'+cx+'" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="'+stroke+'" stroke-dasharray="'+c.toFixed(1)+'" stroke-dashoffset="'+off.toFixed(1)+'" stroke-linecap="round"/></g></svg>';}
 function humanD(ds){var d=new Date(ds+'T00:00:00');return d.getDate()+' '+MN[d.getMonth()];}
-function endTime(se){var t=+se.time.slice(0,2)*60+ +se.time.slice(3)+se.dur;return pad(Math.floor(t/60)%24)+':'+pad(t%60);}
+function endTime(se){var tp=tparts(se.time),t=tp[0]*60+tp[1]+(+se.dur||0);return pad(Math.floor(t/60)%24)+':'+pad(t%60);}
 
 /* ---- рендер ---- */
 var tab='today', roster=null, card=null, groupView=null, payView=false, listView=null;
@@ -350,7 +362,7 @@ function render(){var old=document.querySelector('.savebar');if(old)old.remove()
   updateBadges();
 }
 function updateBadges(){document.querySelectorAll('.nav .dot').forEach(function(x){x.remove();});}
-function go(t,pay){tab=t;roster=null;card=null;groupView=null;listView=null;payView=!!pay;document.querySelectorAll('.nav button').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-t')===t);});render();}
+function go(t,pay){tab=t;state.ui.q='';roster=null;card=null;groupView=null;listView=null;payView=!!pay;document.querySelectorAll('.nav button').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-t')===t);});render();}
 function openList(title,students,subfn){listView={title:title,ids:students.map(function(s){return s.id;}),subfn:subfn};card=null;roster=null;payView=false;groupView=null;render();}
 function renderList(v){
   v.appendChild((function(){var h=el('<div class="rhead"><button class="rback">‹</button><div class="rtitle"><div class="rs">'+listView.ids.length+' человек · назад</div></div></div>');h.querySelector('.rback').onclick=function(){listView=null;render();};return h;})());
@@ -396,32 +408,32 @@ function renderToday(v){
 function attn(ic,icon,tt,ss,cb){var r=el('<div class="att"><div class="ic '+ic+'">'+icon+'</div><div style="min-width:0"><div class="tt">'+esc(tt)+'</div><div class="ss">'+esc(ss)+'</div></div><div class="arr">›</div></div>');r.onclick=cb;return r;}
 
 /* Оплаты */
-function dueMonthKey(s){var pt=paidThrough(s);return pt?nextMonthKey(pt):mk(new Date());}
+function dueMonthKey(s){var pt=paidThrough(s),cur=mk(new Date());if(!pt)return cur;var n=nextMonthKey(pt);return n>cur?n:cur;}
 function payNow(s){if(!s.payments)s.payments=[];s.payments.push(dueMonthKey(s));save();render();}
 function renderPay(v){
   if(payView){var bh=el('<div class="rhead"><button class="rback">‹</button><div class="rtitle"><div class="rs">Назад к группам</div></div></div>');bh.querySelector('.rback').onclick=function(){payView=false;render();};v.appendChild(bh);}
   var now=new Date(),cur=mk(now),monthly=state.students.filter(function(s){return s.type==='monthly';});
-  var deb=monthly.filter(function(s){return isDebtor(s,now);}),paid=monthly.filter(function(s){return !isDebtor(s,now);}),sing=state.students.filter(function(s){return s.type==='single';});
+  var deb=monthly.filter(function(s){return isDebtor(s,now);}),soon=monthly.filter(function(s){return unpaid(s,now)&&!isDebtor(s,now);}),paid=monthly.filter(function(s){return !unpaid(s,now);}),sing=state.students.filter(function(s){return s.type==='single';});
   // сводка
-  v.appendChild(el('<div class="stats"><div class="stat"><div class="n mono" style="color:var(--green)">'+paid.length+'</div><div class="l">оплатили</div></div><div class="stat"><div class="n mono" style="color:var(--orange)">'+deb.length+'</div><div class="l">ждут оплату</div></div><div class="stat"><div class="n mono">'+MNF[+cur.slice(5)].slice(0,3)+'</div><div class="l">текущий месяц</div></div></div>'));
+  v.appendChild(el('<div class="stats"><div class="stat"><div class="n mono" style="color:var(--green)">'+paid.length+'</div><div class="l">оплатили</div></div><div class="stat"><div class="n mono" style="color:var(--orange)">'+(deb.length+soon.length)+'</div><div class="l">ждут оплату</div></div><div class="stat"><div class="n mono">'+MNF[+cur.slice(5)].slice(0,3)+'</div><div class="l">текущий месяц</div></div></div>'));
 
-  v.appendChild(el('<h2 class="sec">Ждут оплату'+(deb.length?'<span class="cnt">'+deb.length+'</span>':'')+'</h2>'));
-  if(!deb.length)v.appendChild(el('<div class="att"><div class="ic ok">✓</div><div><div class="tt">Все оплатили</div><div class="ss">Задолженностей по абонементам нет</div></div></div>'));
-  deb.forEach(function(s){v.appendChild(payRowDebt(s));});
+  var wait=deb.concat(soon);v.appendChild(el('<h2 class="sec">Ждут оплату'+(wait.length?'<span class="cnt">'+wait.length+'</span>':'')+'</h2>'));
+  if(!wait.length)v.appendChild(el('<div class="att"><div class="ic ok">✓</div><div><div class="tt">Все оплатили</div><div class="ss">За '+MNF[+cur.slice(5)]+' оплатили все</div></div></div>'));
+  wait.forEach(function(s){v.appendChild(payRowDebt(s));});
 
   if(paid.length){v.appendChild(el('<h2 class="sec">Оплатили</h2>'));paid.forEach(function(s){v.appendChild(payRowPaid(s));});}
   if(sing.length){v.appendChild(el('<h2 class="sec">Разовые</h2>'));sing.forEach(function(s){var cnt=Object.keys(s.attendance||{}).filter(function(d){return s.attendance[d]==='present';}).length;var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div><div class="nm">'+esc(s.name)+'</div><div class="sb">оплачено занятий: '+cnt+'</div></div><span class="st" style="margin-left:auto;background:var(--card2);color:var(--mut)">РАЗОВО</span></div>');r.onclick=function(){openCard(s.id);};v.appendChild(r);});}
 }
 function payRowDebt(s){
-  var forM=MNF[+dueMonthKey(s).slice(5)];
-  var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb">не оплачен '+forM+' · '+sessionsDue(s)+' занятий</div></div><button class="paybtn">Принять</button></div>');
+  var forM=MNF[+dueMonthKey(s).slice(5)],d=isDebtor(s,new Date());
+  var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+(d?' <span class="st debt">ДОЛГ</span>':'')+'</div><div class="sb">не оплачен '+forM+' · '+sessionsDue(s)+' занятий'+(d?'':' · до '+state.settings.payDay+'-го')+'</div></div><button class="paybtn">Принять</button></div>');
   r.querySelector('.paybtn').onclick=function(e){e.stopPropagation();payNow(s);};
   r.onclick=function(){openCard(s.id);};
   return r;
 }
 function payRowPaid(s){
-  var pt=paidThrough(s),bal=balanceOf(s);
-  var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb">оплачен по '+MNF[+pt.slice(5)]+' · остаток '+bal+'</div></div><button class="paybtn" style="background:var(--card2);color:var(--ink)">+ вперёд</button></div>');
+  var pt=paidThrough(s);
+  var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb">'+(pt?'оплачен по '+MNF[+pt.slice(5)]:'без оплат')+' · '+balText(s)+'</div></div><button class="paybtn" style="background:var(--card2);color:var(--ink)">+ вперёд</button></div>');
   r.querySelector('.paybtn').onclick=function(e){e.stopPropagation();paySheet(s);};
   r.onclick=function(){openCard(s.id);};
   return r;
@@ -432,7 +444,7 @@ function payRowPaid(s){
 function renderGroups(v){
   var w=el('<div style="display:flex;gap:9px;margin-bottom:12px"></div>');
   var i=el('<input class="search" style="margin:0" placeholder="Поиск: имя, фамилия или телефон">');i.value=state.ui.q||'';
-  var a=el('<button class="btn ghost" style="margin-top:0;width:auto;flex:0 0 auto;padding:0 18px;font-size:20px">+</button>');a.onclick=function(){personSheet(null);};
+  var a=el('<button class="btn ghost" style="margin-top:0;width:auto;flex:0 0 auto;padding:0 18px;font-size:20px">+</button>');a.onclick=function(){if(!state.groups.length){groupEditSheet(null);return;}personSheet(null);};
   w.appendChild(i);w.appendChild(a);v.appendChild(w);
   var results=el('<div></div>');v.appendChild(results);
   function fill(){
@@ -440,7 +452,7 @@ function renderGroups(v){
     if(q){
       var res=state.students.filter(function(s){return (s.name+' '+(s.phone||'')+' '+(s.parentPhone||'')).toLowerCase().indexOf(q)>=0;});
       if(!res.length){results.appendChild(el('<div class="empty">Никого не найдено</div>'));return;}
-      res.forEach(function(s){var c=gcol(s.group);var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb"><span class="gdot" style="display:inline-block;background:'+c+';margin-right:5px"></span>'+esc(grp(s.group).name)+' · остаток '+balanceOf(s)+'</div></div><div class="arr">›</div></div>');r.onclick=function(){openCard(s.id);};results.appendChild(r);});
+      res.forEach(function(s){var c=gcol(s.group);var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb"><span class="gdot" style="display:inline-block;background:'+c+';margin-right:5px"></span>'+esc(grp(s.group).name)+' · '+(s.type==='single'?'разовый':balText(s))+'</div></div><div class="arr">›</div></div>');r.onclick=function(){openCard(s.id);};results.appendChild(r);});
     } else {
       state.groups.forEach(function(g){results.appendChild(groupCard(g));});var ng=el('<button class="btn ghost">+ Новая группа</button>');ng.onclick=function(){groupEditSheet(null);};results.appendChild(ng);
     }
@@ -482,13 +494,13 @@ function renderGroupDetail(v){
   // отметить явку
   var mb=el('<button class="btn acc" style="background:'+c+';margin-top:0">Отметить явку</button>');mb.onclick=function(){openRoster(g.id,dstr(now));};v.appendChild(mb);
   // оплаты группы
-  v.appendChild(el('<h2 class="sec">Оплаты'+(deb.length?'<span class="cnt">'+deb.length+'</span>':'')+'</h2>'));
-  if(!deb.length)v.appendChild(el('<div class="att"><div class="ic ok">✓</div><div><div class="tt">Все оплатили</div><div class="ss">Долгов по абонементам нет</div></div></div>'));
-  deb.forEach(function(s){v.appendChild(payRowDebt(s));});
+  var unp=list.filter(function(s){return unpaid(s,now);});v.appendChild(el('<h2 class="sec">Оплаты'+(unp.length?'<span class="cnt">'+unp.length+'</span>':'')+'</h2>'));
+  if(!unp.length)v.appendChild(el('<div class="att"><div class="ic ok">✓</div><div><div class="tt">Все оплатили</div><div class="ss">За '+MNF[+mk(now).slice(5)]+' оплатили все</div></div></div>'));
+  unp.forEach(function(s){v.appendChild(payRowDebt(s));});
   // участники
   v.appendChild(el('<h2 class="sec">Участники · '+list.length+'</h2>'));
   if(!list.length)v.appendChild(el('<div class="empty">В группе пока нет учеников</div>'));
-  list.forEach(function(s){var sub=s.type==='single'?'разовый':('остаток '+balanceOf(s)+' зан.');var flags=isDebtor(s,now)?'<span class="st debt" style="margin-left:6px">ДОЛГ</span>':'';var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb">'+sub+'</div></div>'+flags+'<div class="arr">›</div></div>');r.onclick=function(){openCard(s.id);};v.appendChild(r);});
+  list.forEach(function(s){var sub=s.type==='single'?'разовый':balText(s);var flags=isDebtor(s,now)?'<span class="st debt" style="margin-left:6px">ДОЛГ</span>':'';var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb">'+sub+'</div></div>'+flags+'<div class="arr">›</div></div>');r.onclick=function(){openCard(s.id);};v.appendChild(r);});
   var addb=el('<button class="btn ghost">+ Добавить ученика</button>');addb.onclick=function(){personSheet(null,g.id);};v.appendChild(addb);
   // настройки группы
   v.appendChild(el('<h2 class="sec">Настройки группы</h2>'));
@@ -522,7 +534,7 @@ function renderCard(v){
   function kv(k,val,cls){return '<div class="kv"><span class="k">'+k+'</span><span class="v '+(cls||'')+'">'+val+'</span></div>';}
   var html='';
   html+=kv('Тип оплаты', s.type==='single'?'Разовая':'Абонемент 12 занятий');
-  if(s.type==='monthly'){html+=kv('Остаток занятий', bal, 'mono');html+=kv('Оплата', deb?'<span style="color:var(--orange)">долг · к оплате '+sessionsDue(s)+'</span>':(pt?'оплачен по '+MNF[+pt.slice(5)]:'нет'));}
+  if(s.type==='monthly'){html+=kv('Остаток занятий', bal, 'mono');html+=kv('Оплата', deb?'<span style="color:var(--orange)">долг за '+MNF[+dueMonthKey(s).slice(5)]+' · к оплате '+sessionsDue(s)+' зан.</span>':(unpaid(s,now)?'ждём за '+MNF[+mk(now).slice(5)]+' · до '+state.settings.payDay+'-го':'оплачен по '+MNF[+pt.slice(5)]));}
   else {var cnt=Object.keys(s.attendance||{}).filter(function(d){return s.attendance[d]==='present';}).length;html+=kv('Оплачено занятий', cnt,'mono');}
   html+=kv('Посещаемость', rate([s])+'%','mono');
   var lp=lastPresent(s);html+=kv('Последнее посещение', lp?humanD(lp):'нет данных');
@@ -542,7 +554,7 @@ function renderRoster(v){
   var list=inGroup(g.id);
   if(!list.length)v.appendChild(el('<div class="empty">В группе пока нет учеников. Добавь через «+ Ученик».</div>'));
   list.forEach(function(s){var mkd=(s.attendance&&s.attendance[roster.date])||'',on=mkd==='present';
-    var sub=s.type==='single'?'разовый':('остаток '+balanceOf(s)+' зан.');
+    var sub=s.type==='single'?'разовый':balText(s);
     var stTag=mkd==='sick'?'<span class="st sick">СПРАВКА</span>':mkd==='injury'?'<span class="st injury">ТРАВМА</span>':mkd==='absent'?'<span class="st absent">НЕ БЫЛ</span>':'';
     var row=el('<div class="prow '+(on?'on':'')+'"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb">'+sub+'</div></div>'+stTag+'<div class="chk">'+(on?'✓':'')+'</div><div class="dots">⋯</div></div>');
     row.onclick=function(e){if(e.target.closest('.dots')){statusSheet(s);return;}if(!s.attendance)s.attendance={};if(s.attendance[roster.date]==='present')delete s.attendance[roster.date];else s.attendance[roster.date]='present';save();render();};
@@ -657,12 +669,12 @@ function schedSheet(g){
     sh.innerHTML='<h3>Расписание · '+esc(g.name)+'</h3><div class="muted">Занятия группы. Можно разные дни в разное время.</div>'+rows()+
       '<label class="lbl">Добавить занятие</label>'+
       '<select class="field" id="nwd"><option value="1">Понедельник</option><option value="2">Вторник</option><option value="3">Среда</option><option value="4">Четверг</option><option value="5">Пятница</option><option value="6">Суббота</option><option value="0">Воскресенье</option></select>'+
-      '<input class="field" id="ntime" value="18:00" placeholder="Время 18:00">'+
-      '<input class="field" id="ndur" value="90" placeholder="Длительность, мин">'+
+      '<input class="field" type="time" id="ntime" value="18:00">'+
+      '<input class="field" type="number" inputmode="numeric" id="ndur" value="90" placeholder="Длительность, мин">'+
       '<input class="field" id="nhall" value="Зал 2" placeholder="Зал">'+
       '<button class="btn acc" id="add">Добавить занятие</button><div class="link" id="cl">Готово</div>';
     sh.querySelectorAll('[data-del]').forEach(function(b){b.onclick=function(){g.sessions.splice(+b.getAttribute('data-del'),1);save();draw();};});
-    document.getElementById('add').onclick=function(){g.sessions.push({wd:+document.getElementById('nwd').value,time:document.getElementById('ntime').value,dur:+document.getElementById('ndur').value||90,hall:document.getElementById('nhall').value});g.sessions.sort(function(a,b){return a.wd-b.wd;});save();draw();};
+    document.getElementById('add').onclick=function(){g.sessions.push({wd:+document.getElementById('nwd').value,time:tnorm(document.getElementById('ntime').value||'18:00'),dur:+document.getElementById('ndur').value||90,hall:document.getElementById('nhall').value.trim()});g.sessions.sort(function(a,b){return a.wd-b.wd;});save();draw();};
     document.getElementById('cl').onclick=function(){closeM();render();};
   }
   draw();openM();
@@ -670,8 +682,8 @@ function schedSheet(g){
 function rulesSheet(){
   var sh=document.getElementById('sheet');
   sh.innerHTML='<h3>Правила оплаты</h3>'+
-    '<label class="lbl">Занятий в абонементе</label><input class="field" id="spm" value="'+SPM()+'">'+
-    '<label class="lbl">День оплаты (число месяца)</label><input class="field" id="pd" value="'+state.settings.payDay+'">'+
+    '<label class="lbl">Занятий в абонементе</label><input class="field" type="number" inputmode="numeric" id="spm" value="'+SPM()+'">'+
+    '<label class="lbl">День оплаты (число месяца)</label><input class="field" type="number" inputmode="numeric" id="pd" value="'+state.settings.payDay+'">'+
     '<label class="lbl">Перенос остатка</label>'+
     '<div class="opt '+(state.settings.carryMode==='accumulate'?'on':'')+'" data-c="accumulate"><span class="d" style="background:var(--g1)"></span>Платит за 12, сохраненное плюсом</div>'+
     '<div class="opt '+(state.settings.carryMode==='topup'?'on':'')+'" data-c="topup"><span class="d" style="background:var(--g2)"></span>Платит меньшей суммой (до 12)</div>'+
@@ -686,7 +698,7 @@ function personSheet(s,defGroup){
   sh.innerHTML='<h3>'+(isNew?'Новый ученик':esc(s.name))+'</h3>'+
     '<label class="lbl">Имя и фамилия</label><input class="field" id="pn" value="'+(isNew?'':esc(s.name))+'" placeholder="Имя Фамилия">'+
     '<label class="lbl">Группа</label><select class="field" id="pg">'+state.groups.map(function(g){return '<option value="'+g.id+'" '+(((!isNew&&s.group===g.id)||(isNew&&defGroup===g.id))?'selected':'')+'>'+esc(g.name)+' · '+esc(g.level.split(" · ")[0])+'</option>';}).join('')+'</select>'+
-    '<label class="lbl">Тип оплаты</label><select class="field" id="pt"><option value="monthly" '+(!isNew&&s.type==='monthly'?'selected':'')+'>Абонемент (12 занятий)</option><option value="single" '+(!isNew&&s.type==='single'?'selected':'')+'>Разовая оплата</option></select>'+
+    '<label class="lbl">Тип оплаты</label><select class="field" id="pt"><option value="monthly" '+(!isNew&&s.type==='monthly'?'selected':'')+'>Абонемент ('+SPM()+' занятий)</option><option value="single" '+(!isNew&&s.type==='single'?'selected':'')+'>Разовая оплата</option></select>'+
     '<label class="lbl">Телефон ученика</label><input class="field" id="pph" value="'+(isNew?'':esc(s.phone||''))+'" placeholder="+7 ...">'+
     '<label class="lbl">Телефон родителя</label><input class="field" id="ppp" value="'+(isNew?'':esc(s.parentPhone||''))+'" placeholder="+7 ...">'+
     '<button class="btn acc" id="sv">Сохранить</button>'+(isNew?'':'<button class="btn danger" id="del">Удалить ученика</button>')+'<div class="link" id="cl">Закрыть</div>';
@@ -696,7 +708,7 @@ function personSheet(s,defGroup){
   document.getElementById('cl').onclick=closeM;
 }
 
-document.querySelectorAll('.nav button').forEach(function(b){b.onclick=function(){tab=b.getAttribute('data-t');roster=null;card=null;groupView=null;payView=false;listView=null;document.querySelectorAll('.nav button').forEach(function(x){x.classList.remove('on');});b.classList.add('on');render();};});
+document.querySelectorAll('.nav button').forEach(function(b){b.onclick=function(){tab=b.getAttribute('data-t');state.ui.q='';roster=null;card=null;groupView=null;payView=false;listView=null;document.querySelectorAll('.nav button').forEach(function(x){x.classList.remove('on');});b.classList.add('on');render();};});
 
 /* ===== Firebase ===== */
 function showLogin(auth){
@@ -704,29 +716,47 @@ function showLogin(auth){
   var img=document.getElementById('loginlogo'),src=document.querySelector('.ava img');if(img&&src)img.src=src.src;
   var mail=document.getElementById('lgmail'),pass=document.getElementById('lgpass'),btn=document.getElementById('lgbtn'),err=document.getElementById('lgerr');
   btn.onclick=function(){err.textContent='';btn.textContent='Вход...';
-    auth.signInWithEmailAndPassword((mail.value||'').trim(),pass.value||'').then(function(){}).catch(function(e){btn.textContent='Войти';err.textContent='Не удалось войти. Проверь почту и пароль.';});
+    auth.signInWithEmailAndPassword((mail.value||'').trim(),pass.value||'').then(function(){}).catch(function(e){btn.textContent='Войти';err.textContent=(e&&e.code==='auth/network-request-failed')?'Нет связи с сервером. Проверь интернет, VPN должен быть выключен.':'Не удалось войти. Проверь почту и пароль.';});
   };
   pass.onkeydown=function(e){if(e.key==='Enter')btn.click();};
 }
 function hideLogin(){var lg=document.getElementById('login');if(lg)lg.style.display='none';}
+function showSync(){var s=document.getElementById('sync');if(s)s.style.display='flex';}
+function hideSync(){var s=document.getElementById('sync');if(s)s.style.display='none';}
 function initFirebase(){
   try{firebase.initializeApp(FIREBASE_CONFIG);}catch(e){}
   var auth=firebase.auth(),db=firebase.firestore();
   try{db.enablePersistence({synchronizeTabs:true}).catch(function(){});}catch(e){}
   auth.onAuthStateChanged(function(user){
-    if(!user){FBDOC=null;fbReady=false;showLogin(auth);return;}
-    hideLogin();
-    FBDOC=db.collection('voin').doc('state');
-    FBDOC.onSnapshot(function(snap){
-      if(snap.exists){var d=snap.data();if(d&&d.groups&&d.students){fbApplying=true;state=d;saveLocal();applyTheme();render();fbApplying=false;}}
-      else{try{FBDOC.set(state);}catch(e){}}
-      fbReady=true;
-    },function(e){fbReady=true;});
-    fbReady=true;
+    if(!user){FBDOC=null;fbReady=false;hideSync();showLogin(auth);return;}
+    hideLogin();showSync();
+    var doc=db.collection('voin').doc('state');FBDOC=doc;
+    var tmo=setTimeout(function(){fbReady=true;hideSync();},8000);
+    doc.onSnapshot(function(snap){
+      if(FBDOC!==doc)return;
+      var first=!fbReady;fbReady=true;clearTimeout(tmo);
+      try{
+        if(snap.metadata&&snap.metadata.hasPendingWrites)return;
+        if(!snap.exists){fbFlush();return;}
+        var d=snap.data();if(!(d&&d.groups&&d.students))return;
+        if(first&&isDirty()){fbFlush();return;}
+        if(canon(d)===canon(state))return;
+        fbApplying=true;state=migrate(d);saveLocal();applyTheme();render();fbApplying=false;
+      }catch(e){fbApplying=false;}
+      finally{hideSync();}
+    },function(e){fbReady=true;clearTimeout(tmo);hideSync();});
   });
 }
+function migrate(st){
+  st=st||{};st.settings=st.settings||{};var d=seed().settings;for(var k in d)if(st.settings[k]===undefined)st.settings[k]=d[k];
+  st.groups=st.groups||[];st.students=st.students||[];st.ui=st.ui||{};
+  st.groups.forEach(function(g){g.sessions=g.sessions||[];g.sessions.forEach(function(se){se.time=tnorm(se.time);se.dur=+se.dur||90;se.hall=se.hall||'';});});
+  var ids=st.groups.map(function(g){return g.id;});
+  st.students.forEach(function(s){s.id=String(s.id);if(ids.indexOf(s.group)<0&&st.groups.length)s.group=st.groups[0].id;s.payments=s.payments||[];s.attendance=s.attendance||{};if(s.type!=='single')s.type='monthly';});
+  return st;
+}
 function boot(){
-  state=localLoad()||seed();saveLocal();
+  state=migrate(localLoad()||seed());saveLocal();
   applyTheme();render();
   if(FIREBASE_ENABLED&&typeof firebase!=='undefined'){initFirebase();}
 }
