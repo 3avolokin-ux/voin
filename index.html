@@ -442,7 +442,7 @@ function renderGroups(v){
       if(!res.length){results.appendChild(el('<div class="empty">Никого не найдено</div>'));return;}
       res.forEach(function(s){var c=gcol(s.group);var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb"><span class="gdot" style="display:inline-block;background:'+c+';margin-right:5px"></span>'+esc(grp(s.group).name)+' · остаток '+balanceOf(s)+'</div></div><div class="arr">›</div></div>');r.onclick=function(){openCard(s.id);};results.appendChild(r);});
     } else {
-      state.groups.forEach(function(g){results.appendChild(groupCard(g));});
+      state.groups.forEach(function(g){results.appendChild(groupCard(g));});var ng=el('<button class="btn ghost">+ Новая группа</button>');ng.onclick=function(){groupEditSheet(null);};results.appendChild(ng);
     }
   }
   i.oninput=function(){state.ui.q=i.value;fill();};
@@ -494,7 +494,7 @@ function renderGroupDetail(v){
   v.appendChild(el('<h2 class="sec">Настройки группы</h2>'));
   var s1=el('<div class="row2"><div><div class="t">Название и уровень</div><div class="s">'+esc(g.name)+' · '+esc(g.level)+'</div></div><div class="arr">›</div></div>');s1.onclick=function(){groupEditSheet(g);};v.appendChild(s1);
   var days=g.sessions.map(function(se){return WD[se.wd]+' '+se.time;}).join(' · ')||'не задано';
-  var s2=el('<div class="row2"><div><div class="t">Расписание</div><div class="s">'+esc(days)+'</div></div><div class="arr">›</div></div>');s2.onclick=function(){schedSheet(g);};v.appendChild(s2);
+  var s2=el('<div class="row2"><div><div class="t">Расписание</div><div class="s">'+esc(days)+'</div></div><div class="arr">›</div></div>');s2.onclick=function(){schedSheet(g);};v.appendChild(s2);var s3=el('<div class="row2"><div><div class="t" style="color:var(--red)">Удалить группу</div><div class="s">'+(list.length?('вместе с учениками · '+list.length+' чел'):'группа пустая')+'</div></div><div class="arr">›</div></div>');s3.onclick=function(){confirmDelGroup(g);};v.appendChild(s3);
 }
 
 /* Расписание (лента по датам) */
@@ -641,13 +641,14 @@ function groupEditSheet(g){
     '<label class="lbl">Название</label><input class="field" id="gn" value="'+(isNew?'':esc(g.name))+'" placeholder="Группа 4">'+
     '<label class="lbl">Уровень и возраст</label><input class="field" id="gl" value="'+(isNew?'':esc(g.level))+'" placeholder="новички · 8-10 лет">'+
     '<button class="btn acc" id="sv">Сохранить</button>'+
-    (isNew?'':(cnt?'<div class="muted" style="margin-top:10px">Чтобы удалить группу, сначала перенеси или удали её учеников ('+cnt+').</div>':'<button class="btn danger" id="del">Удалить группу</button>'))+
+    (isNew?'':'<button class="btn danger" id="del">Удалить группу</button>')+
     '<div class="link" id="cl">Закрыть</div>';
   openM();
   document.getElementById('sv').onclick=function(){var n=document.getElementById('gn').value.trim();if(!n)return;var lv=document.getElementById('gl').value.trim()||'группа';if(isNew){var id=1;state.groups.forEach(function(x){if(x.id>=id)id=x.id+1;});state.groups.push({id:id,name:n,level:lv,sessions:[]});}else{g.name=n;g.level=lv;}save();closeM();render();};
-  var d=document.getElementById('del');if(d)d.onclick=function(){state.groups=state.groups.filter(function(x){return x.id!==g.id;});save();closeM();render();};
+  var d=document.getElementById('del');if(d)d.onclick=function(){confirmDelGroup(g);};
   document.getElementById('cl').onclick=closeM;
 }
+function confirmDelGroup(g){var sh=document.getElementById('sheet'),cnt=inGroup(g.id).length;sh.innerHTML='<h3>Удалить группу?</h3>'+'<div class="muted" style="margin-bottom:6px">«'+esc(g.name)+'»'+(cnt?('. Вместе с группой удалятся её ученики ('+cnt+' чел) и их данные.'):'. В группе нет учеников.')+' Отменить нельзя.</div>'+'<button class="btn danger" id="cdel">Удалить'+(cnt?' группу и учеников':' группу')+'</button>'+'<div class="link" id="cc">Отмена</div>';openM();document.getElementById('cdel').onclick=function(){state.groups=state.groups.filter(function(x){return x.id!==g.id;});state.students=state.students.filter(function(s){return s.group!==g.id;});groupView=null;save();closeM();render();};document.getElementById('cc').onclick=closeM;}
 function schedSheet(g){
   var sh=document.getElementById('sheet');
   function rows(){return g.sessions.map(function(se,i){return '<div class="row2"><div><div class="t">'+['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'][se.wd]+'</div><div class="s">'+se.time+' · '+se.dur+' мин · '+esc(se.hall)+'</div></div><button class="btn danger sm" data-del="'+i+'" style="width:auto;margin:0;padding:7px 11px">Удалить</button></div>';}).join('');}
