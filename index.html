@@ -281,7 +281,8 @@ function balanceOf(s){var p=(s.payments||[]).length*SPM(),sp=0,a=s.attendance||{
 function paidThrough(s){var p=s.payments||[];return p.length?p.slice().sort().pop():null;}
 function unpaid(s,t){if(s.type!=='monthly')return false;var pt=paidThrough(s);return !(pt&&pt>=mk(t));}
 function isDebtor(s,t){return unpaid(s,t)&&t.getDate()>state.settings.payDay;}
-function balText(s){var b=balanceOf(s);return b<0?('в долг '+(-b)+' зан.'):('остаток '+b+' зан.');}
+function isMonthMode(){return (state.settings.subType||'month')==='month';}
+function balText(s){if(isMonthMode())return unpaid(s,new Date())?'месяц не оплачен':'месяц оплачен';var b=balanceOf(s);return b<0?('в долг '+(-b)+' зан.'):('остаток '+b+' зан.');}
 function tparts(t){var m=/^\s*(\d{1,2})[:.](\d{1,2})\s*$/.exec(String(t||''));return m?[Math.min(23,+m[1]),Math.min(59,+m[2])]:[0,0];}
 function tnorm(t){var p=tparts(t);return pad(p[0])+':'+pad(p[1]);}
 function medOk(s,t){if(!s.med||!s.med.until)return false;return s.med.until>=dstr(t);}
@@ -311,7 +312,7 @@ function seed(){
   function att(kind){var o={};if(kind==='p'){o[ago(2)]='present';o[ago(5)]='present';o[ago(9)]='present';}if(kind==='a'){o[ago(2)]='absent';o[ago(5)]='absent';o[ago(9)]='absent';}if(kind==='s'){o[ago(2)]='sick';o[ago(5)]='present';}return o;}
   function S(id,n,g,t,pays,a,md,ph,pph){return{id:id,name:n,group:g,type:t,payments:pays,attendance:a||{},med:md||null,phone:ph||'',parentPhone:pph||''};}
   return {
-    settings:{theme:'dark', skin:'standard', payDay:5, sessionsPerMonth:12, carryMode:'accumulate'},
+    settings:{theme:'dark', skin:'standard', payDay:5, sessionsPerMonth:12, carryMode:'accumulate', subType:'month'},
     groups:[
       {id:1,name:'Группа 1',level:'новички · 8-10 лет',sessions:[{wd:1,time:'17:00',dur:90,hall:'Зал 2'},{wd:3,time:'17:00',dur:90,hall:'Зал 2'},{wd:5,time:'18:00',dur:90,hall:'Зал 2'}]},
       {id:2,name:'Группа 2',level:'основная · 11-13 лет',sessions:[{wd:1,time:'18:30',dur:90,hall:'Зал 2'},{wd:3,time:'18:30',dur:90,hall:'Зал 2'},{wd:5,time:'19:30',dur:90,hall:'Зал 2'}]},
@@ -425,14 +426,14 @@ function renderPay(v){
 }
 function payRowDebt(s){
   var forM=MNF[+dueMonthKey(s).slice(5)],d=isDebtor(s,new Date());
-  var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+(d?' <span class="st debt">ДОЛГ</span>':'')+'</div><div class="sb">не оплачен '+forM+' · '+sessionsDue(s)+' занятий'+(d?'':' · до '+state.settings.payDay+'-го')+'</div></div><button class="paybtn">Принять</button></div>');
+  var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+(d?' <span class="st debt">ДОЛГ</span>':'')+'</div><div class="sb">не оплачен '+forM+(isMonthMode()?'':' · '+sessionsDue(s)+' занятий')+(d?'':' · до '+state.settings.payDay+'-го')+'</div></div><button class="paybtn">Принять</button></div>');
   r.querySelector('.paybtn').onclick=function(e){e.stopPropagation();payNow(s);};
   r.onclick=function(){openCard(s.id);};
   return r;
 }
 function payRowPaid(s){
   var pt=paidThrough(s);
-  var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb">'+(pt?'оплачен по '+MNF[+pt.slice(5)]:'без оплат')+' · '+balText(s)+'</div></div><button class="paybtn" style="background:var(--card2);color:var(--ink)">+ вперёд</button></div>');
+  var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb">'+(pt?'оплачен по '+MNF[+pt.slice(5)]:'без оплат')+(isMonthMode()?'':' · '+balText(s))+'</div></div><button class="paybtn" style="background:var(--card2);color:var(--ink)">+ вперёд</button></div>');
   r.querySelector('.paybtn').onclick=function(e){e.stopPropagation();paySheet(s);};
   r.onclick=function(){openCard(s.id);};
   return r;
@@ -532,8 +533,8 @@ function renderCard(v){
   v.appendChild(el('<div class="cardtop"><div class="cardav">'+esc(ini(s.name))+'</div><div style="flex:1;min-width:0"><div class="cardname">'+esc(s.name)+'</div><div class="cardsub"><span class="gdot" style="background:'+c+'"></span>'+esc(g.name)+' · '+esc(g.level)+'</div></div><div class="cardring">'+ringSVG(srt,c,74,8)+'<span class="ringtxt mono">'+srt+'%</span></div></div>'));
   function kv(k,val,cls){return '<div class="kv"><span class="k">'+k+'</span><span class="v '+(cls||'')+'">'+val+'</span></div>';}
   var html='';
-  html+=kv('Тип оплаты', s.type==='single'?'Разовая':'Абонемент 12 занятий');
-  if(s.type==='monthly'){html+=kv('Остаток занятий', bal, 'mono');html+=kv('Оплата', deb?'<span style="color:var(--orange)">долг за '+MNF[+dueMonthKey(s).slice(5)]+' · к оплате '+sessionsDue(s)+' зан.</span>':(unpaid(s,now)?'ждём за '+MNF[+mk(now).slice(5)]+' · до '+state.settings.payDay+'-го':'оплачен по '+MNF[+pt.slice(5)]));}
+  html+=kv('Тип оплаты', s.type==='single'?'Разовая':(isMonthMode()?'Абонемент на месяц':'Абонемент '+SPM()+' занятий'));
+  if(s.type==='monthly'){if(!isMonthMode())html+=kv('Остаток занятий', bal, 'mono');html+=kv('Оплата', deb?'<span style="color:var(--orange)">долг за '+MNF[+dueMonthKey(s).slice(5)]+(isMonthMode()?'':' · к оплате '+sessionsDue(s)+' зан.')+'</span>':(unpaid(s,now)?'ждём за '+MNF[+mk(now).slice(5)]+' · до '+state.settings.payDay+'-го':'оплачен по '+MNF[+pt.slice(5)]));}
   else {var cnt=Object.keys(s.attendance||{}).filter(function(d){return s.attendance[d]==='present';}).length;html+=kv('Оплачено занятий', cnt,'mono');}
   html+=kv('Посещаемость', rate([s])+'%','mono');
   var lp=lastPresent(s);html+=kv('Последнее посещение', lp?humanD(lp):'нет данных');
@@ -589,9 +590,9 @@ function renderSettings(v){
     r.onclick=function(){schedSheet(g);};v.appendChild(r);});
 
   v.appendChild(el('<h2 class="sec">Правила оплаты</h2>'));
-  v.appendChild((function(){var r=el('<div class="row2"><div><div class="t">Занятий в абонементе</div><div class="s">списывается за приход и пропуск без справки</div></div><div class="v mono" style="font-weight:800">'+SPM()+'</div></div>');return r;})());
+  v.appendChild((function(){var r=el(isMonthMode()?'<div class="row2"><div><div class="t">Абонемент</div><div class="s">помесячный · без лимита занятий</div></div><div class="arr">›</div></div>':'<div class="row2"><div><div class="t">Занятий в абонементе</div><div class="s">списывается за приход и пропуск без справки</div></div><div class="v mono" style="font-weight:800">'+SPM()+'</div></div>');r.onclick=function(){rulesSheet();};return r;})());
   v.appendChild((function(){var r=el('<div class="row2"><div><div class="t">День оплаты</div><div class="s">после этого числа неоплатившие в должниках</div></div><div class="v mono" style="font-weight:800">'+state.settings.payDay+'</div></div>');r.onclick=function(){rulesSheet();};return r;})());
-  v.appendChild((function(){var r=el('<div class="row2"><div><div class="t">Перенос остатка</div><div class="s">'+(state.settings.carryMode==='accumulate'?'платит за 12, сохраненное идет плюсом':'платит меньшей суммой до 12')+'</div></div><div class="arr">›</div></div>');r.onclick=function(){rulesSheet();};return r;})());
+  if(!isMonthMode())v.appendChild((function(){var r=el('<div class="row2"><div><div class="t">Перенос остатка</div><div class="s">'+(state.settings.carryMode==='accumulate'?'платит за 12, сохраненное идет плюсом':'платит меньшей суммой до 12')+'</div></div><div class="arr">›</div></div>');r.onclick=function(){rulesSheet();};return r;})());
 
   v.appendChild(el('<h2 class="sec">О приложении</h2>'));
   var synced=FIREBASE_ENABLED&&fbReady&&FBDOC;
@@ -616,7 +617,7 @@ function markSheet(){
 }
 function statusSheet(s){
   var sh=document.getElementById('sheet');
-  sh.innerHTML='<h3>'+esc(s.name)+'</h3><div class="muted">Статус на '+humanD(roster.date)+'. «Был» и «Не был» списывают занятие, справка и травма сохраняют.</div>'+
+  sh.innerHTML='<h3>'+esc(s.name)+'</h3><div class="muted">Статус на '+humanD(roster.date)+'. '+(isMonthMode()?'Отметки идут в историю и посещаемость.':'«Был» и «Не был» списывают занятие, справка и травма сохраняют.')+'</div>'+
     '<div class="opt" data-k="present"><span class="d" style="background:var(--g1)"></span>Был на тренировке</div>'+
     '<div class="opt" data-k="sick"><span class="d" style="background:var(--g2)"></span>Пропуск по справке</div>'+
     '<div class="opt" data-k="injury"><span class="d" style="background:var(--g3)"></span>Травма</div>'+
@@ -635,9 +636,9 @@ function paySheet(s){
   function label(){return monthsChain(dueMonthKey(s),n).map(function(m){return MNF[+m.slice(5)];}).join(', ');}
   function draw(){
     var pt=paidThrough(s);
-    sh.innerHTML='<h3>Оплата · '+esc(s.name)+'</h3><div class="muted">Абонемент '+SPM()+' занятий в месяц. Выбери, за сколько месяцев оплатил. Деньги остаются у тебя.</div>'+
+    sh.innerHTML='<h3>Оплата · '+esc(s.name)+'</h3><div class="muted">'+(isMonthMode()?'Абонемент на месяц.':'Абонемент '+SPM()+' занятий в месяц.')+' Выбери, за сколько месяцев оплатил. Деньги остаются у тебя.</div>'+
       '<div class="seg" id="mseg"><button data-m="1">1 месяц</button><button data-m="2">2 месяца</button><button data-m="3">3 месяца</button></div>'+
-      '<div class="row2" style="margin-bottom:12px"><div><div class="t">Месяцы</div><div class="s" id="mlabel">'+label()+'</div></div><div class="v mono" style="font-weight:800">'+(SPM()*n)+' зан.</div></div>'+
+      '<div class="row2" style="margin-bottom:12px"><div><div class="t">Месяцы</div><div class="s" id="mlabel">'+label()+'</div></div><div class="v mono" style="font-weight:800">'+(isMonthMode()?(n+' мес.'):((SPM()*n)+' зан.'))+'</div></div>'+
       '<button class="btn acc" id="do">Оплатил за '+n+' '+(n===1?'месяц':(n<5?'месяца':'месяцев'))+'</button>'+(pt?'<button class="btn ghost" id="un">Отменить последнюю оплату</button>':'')+'<div class="link" id="cl">Закрыть</div>';
     sh.querySelectorAll('#mseg button').forEach(function(b){if(+b.getAttribute('data-m')===n)b.classList.add('on');b.onclick=function(){n=+b.getAttribute('data-m');draw();};});
     document.getElementById('do').onclick=function(){if(!s.payments)s.payments=[];monthsChain(dueMonthKey(s),n).forEach(function(m){s.payments.push(m);});save();closeM();render();};
@@ -681,15 +682,19 @@ function schedSheet(g){
 function rulesSheet(){
   var sh=document.getElementById('sheet');
   sh.innerHTML='<h3>Правила оплаты</h3>'+
-    '<label class="lbl">Занятий в абонементе</label><input class="field" type="number" inputmode="numeric" id="spm" value="'+SPM()+'">'+
+    '<label class="lbl">Тип абонемента</label>'+
+    '<div class="opt '+(isMonthMode()?'on':'')+'" data-st="month"><span class="d" style="background:var(--g1)"></span>Помесячный · без лимита занятий</div>'+
+    '<div class="opt '+(isMonthMode()?'':'on')+'" data-st="pack"><span class="d" style="background:var(--g3)"></span>Пакет занятий · списывается за приход</div>'+
+    (isMonthMode()?'':'<label class="lbl">Занятий в абонементе</label><input class="field" type="number" inputmode="numeric" id="spm" value="'+SPM()+'">')+
     '<label class="lbl">День оплаты (число месяца)</label><input class="field" type="number" inputmode="numeric" id="pd" value="'+state.settings.payDay+'">'+
-    '<label class="lbl">Перенос остатка</label>'+
+    (isMonthMode()?'':'<label class="lbl">Перенос остатка</label>'+
     '<div class="opt '+(state.settings.carryMode==='accumulate'?'on':'')+'" data-c="accumulate"><span class="d" style="background:var(--g1)"></span>Платит за 12, сохраненное плюсом</div>'+
-    '<div class="opt '+(state.settings.carryMode==='topup'?'on':'')+'" data-c="topup"><span class="d" style="background:var(--g2)"></span>Платит меньшей суммой (до 12)</div>'+
+    '<div class="opt '+(state.settings.carryMode==='topup'?'on':'')+'" data-c="topup"><span class="d" style="background:var(--g2)"></span>Платит меньшей суммой (до 12)</div>')+
     '<button class="btn acc" id="sv">Сохранить</button><div class="link" id="cl">Закрыть</div>';
   openM();
+  sh.querySelectorAll('[data-st]').forEach(function(o){o.onclick=function(){state.settings.subType=o.getAttribute('data-st');save();rulesSheet();};});
   sh.querySelectorAll('[data-c]').forEach(function(o){o.onclick=function(){state.settings.carryMode=o.getAttribute('data-c');sh.querySelectorAll('[data-c]').forEach(function(x){x.classList.remove('on');});o.classList.add('on');};});
-  document.getElementById('sv').onclick=function(){state.settings.sessionsPerMonth=+document.getElementById('spm').value||12;state.settings.payDay=+document.getElementById('pd').value||5;save();closeM();render();};
+  document.getElementById('sv').onclick=function(){var _spm=document.getElementById('spm');if(_spm)state.settings.sessionsPerMonth=+_spm.value||12;state.settings.payDay=+document.getElementById('pd').value||5;save();closeM();render();};
   document.getElementById('cl').onclick=closeM;
 }
 function personSheet(s,defGroup){
@@ -697,7 +702,7 @@ function personSheet(s,defGroup){
   sh.innerHTML='<h3>'+(isNew?'Новый ученик':esc(s.name))+'</h3>'+
     '<label class="lbl">Имя и фамилия</label><input class="field" id="pn" value="'+(isNew?'':esc(s.name))+'" placeholder="Имя Фамилия">'+
     '<label class="lbl">Группа</label><select class="field" id="pg">'+state.groups.map(function(g){return '<option value="'+g.id+'" '+(((!isNew&&s.group===g.id)||(isNew&&defGroup===g.id))?'selected':'')+'>'+esc(g.name)+' · '+esc(g.level.split(" · ")[0])+'</option>';}).join('')+'</select>'+
-    '<label class="lbl">Тип оплаты</label><select class="field" id="pt"><option value="monthly" '+(!isNew&&s.type==='monthly'?'selected':'')+'>Абонемент ('+SPM()+' занятий)</option><option value="single" '+(!isNew&&s.type==='single'?'selected':'')+'>Разовая оплата</option></select>'+
+    '<label class="lbl">Тип оплаты</label><select class="field" id="pt"><option value="monthly" '+(!isNew&&s.type==='monthly'?'selected':'')+'>'+(isMonthMode()?'Абонемент (месяц)':'Абонемент ('+SPM()+' занятий)')+'</option><option value="single" '+(!isNew&&s.type==='single'?'selected':'')+'>Разовая оплата</option></select>'+
     '<label class="lbl">Телефон ученика</label><input class="field" id="pph" value="'+(isNew?'':esc(s.phone||''))+'" placeholder="+7 ...">'+
     '<label class="lbl">Телефон родителя</label><input class="field" id="ppp" value="'+(isNew?'':esc(s.parentPhone||''))+'" placeholder="+7 ...">'+
     '<button class="btn acc" id="sv">Сохранить</button>'+(isNew?'':'<button class="btn danger" id="del">Удалить ученика</button>')+'<div class="link" id="cl">Закрыть</div>';
@@ -750,7 +755,7 @@ function initFirebase(){
 }
 function migrate(st){
   st=st||{};st.settings=st.settings||{};var d=seed().settings;for(var k in d)if(st.settings[k]===undefined)st.settings[k]=d[k];
-  st.groups=st.groups||[];st.students=st.students||[];st.ui=st.ui||{};
+  if(st.settings.subType!=='pack')st.settings.subType='month';st.groups=st.groups||[];st.students=st.students||[];st.ui=st.ui||{};
   st.groups.forEach(function(g){g.sessions=g.sessions||[];g.sessions.forEach(function(se){se.time=tnorm(se.time);se.dur=+se.dur||90;se.hall=se.hall||'';});});
   var ids=st.groups.map(function(g){return g.id;});
   st.students.forEach(function(s){s.id=String(s.id);if(ids.indexOf(s.group)<0&&st.groups.length)s.group=st.groups[0].id;s.payments=s.payments||[];s.attendance=s.attendance||{};if(s.type!=='single')s.type='monthly';});
