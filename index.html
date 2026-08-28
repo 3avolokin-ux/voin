@@ -278,10 +278,15 @@ var MNF=['','Январь','Февраль','Март','Апрель','Май','
 /* ---- логика ---- */
 function SPM(){return state.settings.sessionsPerMonth;}
 function balanceOf(s){var p=(s.payments||[]).length*SPM(),sp=0,a=s.attendance||{};for(var d in a){if(a[d]==='present'||a[d]==='absent')sp++;}return p-sp;}
-function paidThrough(s){var p=s.payments||[];return p.length?p.slice().sort().pop():null;}
+function paidThrough(s){var p=payMonths(s);return p.length?p.slice().sort().pop():null;}
 function unpaid(s,t){if(s.type!=='monthly')return false;var pt=paidThrough(s);return !(pt&&pt>=mk(t));}
 function isDebtor(s,t){return unpaid(s,t)&&t.getDate()>state.settings.payDay;}
 function isMonthMode(){return (state.settings.subType||'month')==='month';}
+function priceOf(s){return +s.price||+state.settings.monthPrice||0;}
+function pm(p){return typeof p==='string'?p:(p&&p.m)||'';}
+function payMonths(s){return (s.payments||[]).map(pm);}
+function payAmtFor(s,key){var e=(s.payments||[]).filter(function(p){return pm(p)===key;})[0];return e&&typeof e==='object'&&e.amt!=null?+e.amt:null;}
+function rub(x){return (Math.round(x)).toLocaleString('ru-RU')+' ₽';}
 function balText(s){if(isMonthMode())return unpaid(s,new Date())?'месяц не оплачен':'месяц оплачен';var b=balanceOf(s);return b<0?('в долг '+(-b)+' зан.'):('остаток '+b+' зан.');}
 function tparts(t){var m=/^\s*(\d{1,2})[:.](\d{1,2})\s*$/.exec(String(t||''));return m?[Math.min(23,+m[1]),Math.min(59,+m[2])]:[0,0];}
 function tnorm(t){var p=tparts(t);return pad(p[0])+':'+pad(p[1]);}
@@ -312,7 +317,7 @@ function seed(){
   function att(kind){var o={};if(kind==='p'){o[ago(2)]='present';o[ago(5)]='present';o[ago(9)]='present';}if(kind==='a'){o[ago(2)]='absent';o[ago(5)]='absent';o[ago(9)]='absent';}if(kind==='s'){o[ago(2)]='sick';o[ago(5)]='present';}return o;}
   function S(id,n,g,t,pays,a,md,ph,pph){return{id:id,name:n,group:g,type:t,payments:pays,attendance:a||{},med:md||null,phone:ph||'',parentPhone:pph||''};}
   return {
-    settings:{theme:'dark', skin:'standard', payDay:5, sessionsPerMonth:12, carryMode:'accumulate', subType:'month'},
+    settings:{theme:'dark', skin:'standard', payDay:5, sessionsPerMonth:12, carryMode:'accumulate', subType:'month', monthPrice:2500},
     groups:[
       {id:1,name:'Группа 1',level:'новички · 8-10 лет',sessions:[{wd:1,time:'17:00',dur:90,hall:'Зал 2'},{wd:3,time:'17:00',dur:90,hall:'Зал 2'},{wd:5,time:'18:00',dur:90,hall:'Зал 2'}]},
       {id:2,name:'Группа 2',level:'основная · 11-13 лет',sessions:[{wd:1,time:'18:30',dur:90,hall:'Зал 2'},{wd:3,time:'18:30',dur:90,hall:'Зал 2'},{wd:5,time:'19:30',dur:90,hall:'Зал 2'}]},
@@ -409,24 +414,34 @@ function attn(ic,icon,tt,ss,cb){var r=el('<div class="att"><div class="ic '+ic+'
 
 /* Оплаты */
 function dueMonthKey(s){var pt=paidThrough(s),cur=mk(new Date());if(!pt)return cur;var n=nextMonthKey(pt);return n>cur?n:cur;}
-function payNow(s){if(!s.payments)s.payments=[];s.payments.push(dueMonthKey(s));save();render();}
+function payNow(s){if(!s.payments)s.payments=[];s.payments.push({m:dueMonthKey(s),amt:priceOf(s)||null});save();render();}
 function renderPay(v){
   if(payView){var bh=el('<div class="rhead"><button class="rback">‹</button><div class="rtitle"><div class="rs">Назад к группам</div></div></div>');bh.querySelector('.rback').onclick=function(){payView=false;render();};v.appendChild(bh);}
   var now=new Date(),cur=mk(now),monthly=state.students.filter(function(s){return s.type==='monthly';});
   var deb=monthly.filter(function(s){return isDebtor(s,now);}),soon=monthly.filter(function(s){return unpaid(s,now)&&!isDebtor(s,now);}),paid=monthly.filter(function(s){return !unpaid(s,now);}),sing=state.students.filter(function(s){return s.type==='single';});
   // сводка
   v.appendChild(el('<div class="stats"><div class="stat"><div class="n mono" style="color:var(--green)">'+paid.length+'</div><div class="l">оплатили</div></div><div class="stat"><div class="n mono" style="color:var(--orange)">'+(deb.length+soon.length)+'</div><div class="l">ждут оплату</div></div><div class="stat"><div class="n mono">'+MNF[+cur.slice(5)].slice(0,3)+'</div><div class="l">текущий месяц</div></div></div>'));
+  var expTotal=0,gotTotal=0;monthly.forEach(function(s){var p=priceOf(s);expTotal+=p;if(!unpaid(s,now)){var a=payAmtFor(s,cur);gotTotal+=(a!=null?a:p);}});
+  if(expTotal>0){
+    v.appendChild(el('<div class="stats"><div class="stat"><div class="n mono" style="color:var(--green);font-size:17px;line-height:1.2">'+rub(gotTotal)+'</div><div class="l">собрано</div></div><div class="stat"><div class="n mono" style="color:var(--orange);font-size:17px;line-height:1.2">'+rub(expTotal-gotTotal)+'</div><div class="l">осталось</div></div><div class="stat"><div class="n mono" style="font-size:17px;line-height:1.2">'+rub(expTotal)+'</div><div class="l">план месяца</div></div></div>'));
+  } else {
+    var hint=el('<div class="row2"><div><div class="t">Укажи стоимость абонемента</div><div class="s">и здесь появится сводка: собрано, осталось, план</div></div><div class="arr">›</div></div>');hint.onclick=function(){rulesSheet();};v.appendChild(hint);
+  }
 
   var wait=deb.concat(soon);v.appendChild(el('<h2 class="sec">Ждут оплату'+(wait.length?'<span class="cnt">'+wait.length+'</span>':'')+'</h2>'));
   if(!wait.length)v.appendChild(el('<div class="att"><div class="ic ok">✓</div><div><div class="tt">Все оплатили</div><div class="ss">За '+MNF[+cur.slice(5)]+' оплатили все</div></div></div>'));
   wait.forEach(function(s){v.appendChild(payRowDebt(s));});
 
   if(paid.length){v.appendChild(el('<h2 class="sec">Оплатили</h2>'));paid.forEach(function(s){v.appendChild(payRowPaid(s));});}
+  if(expTotal>0){v.appendChild(el('<h2 class="sec">Сборы по месяцам</h2>'));
+    for(var off=0;off<3;off++){(function(off){var d=new Date(now.getFullYear(),now.getMonth()-off,1),key=mk(d);var got=0,cnt=0;monthly.forEach(function(s){if(payMonths(s).indexOf(key)>=0){var a=payAmtFor(s,key);got+=(a!=null?a:priceOf(s));cnt++;}});
+      v.appendChild(el('<div class="row2"><div><div class="t">'+MNF[+key.slice(5)]+'</div><div class="s">оплатили '+cnt+' из '+monthly.length+'</div></div><div class="v mono" style="font-weight:800">'+rub(got)+'</div></div>'));})(off);}
+  }
   if(sing.length){v.appendChild(el('<h2 class="sec">Разовые</h2>'));sing.forEach(function(s){var cnt=Object.keys(s.attendance||{}).filter(function(d){return s.attendance[d]==='present';}).length;var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div><div class="nm">'+esc(s.name)+'</div><div class="sb">оплачено занятий: '+cnt+'</div></div><span class="st" style="margin-left:auto;background:var(--card2);color:var(--mut)">РАЗОВО</span></div>');r.onclick=function(){openCard(s.id);};v.appendChild(r);});}
 }
 function payRowDebt(s){
   var forM=MNF[+dueMonthKey(s).slice(5)],d=isDebtor(s,new Date());
-  var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+(d?' <span class="st debt">ДОЛГ</span>':'')+'</div><div class="sb">не оплачен '+forM+(isMonthMode()?'':' · '+sessionsDue(s)+' занятий')+(d?'':' · до '+state.settings.payDay+'-го')+'</div></div><button class="paybtn">Принять</button></div>');
+  var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+(d?' <span class="st debt">ДОЛГ</span>':'')+'</div><div class="sb">не оплачен '+forM+(priceOf(s)?' · '+rub(priceOf(s)):'')+(isMonthMode()?'':' · '+sessionsDue(s)+' занятий')+(d?'':' · до '+state.settings.payDay+'-го')+'</div></div><button class="paybtn">Принять</button></div>');
   r.querySelector('.paybtn').onclick=function(e){e.stopPropagation();payNow(s);};
   r.onclick=function(){openCard(s.id);};
   return r;
@@ -536,6 +551,7 @@ function renderCard(v){
   html+=kv('Тип оплаты', s.type==='single'?'Разовая':(isMonthMode()?'Абонемент на месяц':'Абонемент '+SPM()+' занятий'));
   if(s.type==='monthly'){if(!isMonthMode())html+=kv('Остаток занятий', bal, 'mono');html+=kv('Оплата', deb?'<span style="color:var(--orange)">долг за '+MNF[+dueMonthKey(s).slice(5)]+(isMonthMode()?'':' · к оплате '+sessionsDue(s)+' зан.')+'</span>':(unpaid(s,now)?'ждём за '+MNF[+mk(now).slice(5)]+' · до '+state.settings.payDay+'-го':'оплачен по '+MNF[+pt.slice(5)]));}
   else {var cnt=Object.keys(s.attendance||{}).filter(function(d){return s.attendance[d]==='present';}).length;html+=kv('Оплачено занятий', cnt,'mono');}
+  if(s.type==='monthly'&&priceOf(s))html+=kv('Стоимость абонемента', rub(priceOf(s)),'mono');
   html+=kv('Посещаемость', rate([s])+'%','mono');
   var lp=lastPresent(s);html+=kv('Последнее посещение', lp?humanD(lp):'нет данных');
   html+=kv('Телефон ученика', s.phone?'<a class="v" href="tel:'+esc(s.phone.replace(/\s/g,''))+'">'+esc(s.phone)+'</a>':'<span style="color:var(--mut2)">нет</span>');
@@ -590,6 +606,7 @@ function renderSettings(v){
     r.onclick=function(){schedSheet(g);};v.appendChild(r);});
 
   v.appendChild(el('<h2 class="sec">Правила оплаты</h2>'));
+  v.appendChild((function(){var r=el('<div class="row2"><div><div class="t">Стоимость абонемента</div><div class="s">для новых учеников · у каждого своя в карточке</div></div><div class="v mono" style="font-weight:800">'+(+state.settings.monthPrice?rub(state.settings.monthPrice):'не задана')+'</div></div>');r.onclick=function(){rulesSheet();};return r;})());
   v.appendChild((function(){var r=el(isMonthMode()?'<div class="row2"><div><div class="t">Абонемент</div><div class="s">помесячный · без лимита занятий</div></div><div class="arr">›</div></div>':'<div class="row2"><div><div class="t">Занятий в абонементе</div><div class="s">списывается за приход и пропуск без справки</div></div><div class="v mono" style="font-weight:800">'+SPM()+'</div></div>');r.onclick=function(){rulesSheet();};return r;})());
   v.appendChild((function(){var r=el('<div class="row2"><div><div class="t">День оплаты</div><div class="s">после этого числа неоплатившие в должниках</div></div><div class="v mono" style="font-weight:800">'+state.settings.payDay+'</div></div>');r.onclick=function(){rulesSheet();};return r;})());
   if(!isMonthMode())v.appendChild((function(){var r=el('<div class="row2"><div><div class="t">Перенос остатка</div><div class="s">'+(state.settings.carryMode==='accumulate'?'платит за 12, сохраненное идет плюсом':'платит меньшей суммой до 12')+'</div></div><div class="arr">›</div></div>');r.onclick=function(){rulesSheet();};return r;})());
@@ -639,10 +656,11 @@ function paySheet(s){
     sh.innerHTML='<h3>Оплата · '+esc(s.name)+'</h3><div class="muted">'+(isMonthMode()?'Абонемент на месяц.':'Абонемент '+SPM()+' занятий в месяц.')+' Выбери, за сколько месяцев оплатил. Деньги остаются у тебя.</div>'+
       '<div class="seg" id="mseg"><button data-m="1">1 месяц</button><button data-m="2">2 месяца</button><button data-m="3">3 месяца</button></div>'+
       '<div class="row2" style="margin-bottom:12px"><div><div class="t">Месяцы</div><div class="s" id="mlabel">'+label()+'</div></div><div class="v mono" style="font-weight:800">'+(isMonthMode()?(n+' мес.'):((SPM()*n)+' зан.'))+'</div></div>'+
+      (priceOf(s)?'<div class="row2" style="margin-bottom:12px"><div><div class="t">К оплате</div><div class="s">сумма запишется в отчет</div></div><div class="v mono" style="font-weight:800">'+rub(priceOf(s)*n)+'</div></div>':'')+
       '<button class="btn acc" id="do">Оплатил за '+n+' '+(n===1?'месяц':(n<5?'месяца':'месяцев'))+'</button>'+(pt?'<button class="btn ghost" id="un">Отменить последнюю оплату</button>':'')+'<div class="link" id="cl">Закрыть</div>';
     sh.querySelectorAll('#mseg button').forEach(function(b){if(+b.getAttribute('data-m')===n)b.classList.add('on');b.onclick=function(){n=+b.getAttribute('data-m');draw();};});
-    document.getElementById('do').onclick=function(){if(!s.payments)s.payments=[];monthsChain(dueMonthKey(s),n).forEach(function(m){s.payments.push(m);});save();closeM();render();};
-    var u=document.getElementById('un');if(u)u.onclick=function(){s.payments.sort();s.payments.pop();save();closeM();render();};
+    document.getElementById('do').onclick=function(){if(!s.payments)s.payments=[];monthsChain(dueMonthKey(s),n).forEach(function(m){s.payments.push({m:m,amt:priceOf(s)||null});});save();closeM();render();};
+    var u=document.getElementById('un');if(u)u.onclick=function(){s.payments.sort(function(a,b){return pm(a)<pm(b)?-1:1;});s.payments.pop();save();closeM();render();};
     document.getElementById('cl').onclick=closeM;
   }
   openM();draw();
@@ -686,6 +704,8 @@ function rulesSheet(){
     '<div class="opt '+(isMonthMode()?'on':'')+'" data-st="month"><span class="d" style="background:var(--g1)"></span>Помесячный · без лимита занятий</div>'+
     '<div class="opt '+(isMonthMode()?'':'on')+'" data-st="pack"><span class="d" style="background:var(--g3)"></span>Пакет занятий · списывается за приход</div>'+
     (isMonthMode()?'':'<label class="lbl">Занятий в абонементе</label><input class="field" type="number" inputmode="numeric" id="spm" value="'+SPM()+'">')+
+    '<label class="lbl">Стоимость абонемента для новых учеников, руб</label><input class="field" type="number" inputmode="numeric" id="mprice" value="'+(+state.settings.monthPrice||'')+'" placeholder="например 2500">'+
+    '<div class="muted" style="margin:-4px 2px 8px">Подставляется новому ученику при добавлении. Цена каждого меняется в его карточке и на прошлые оплаты не влияет.</div>'+
     '<label class="lbl">День оплаты (число месяца)</label><input class="field" type="number" inputmode="numeric" id="pd" value="'+state.settings.payDay+'">'+
     (isMonthMode()?'':'<label class="lbl">Перенос остатка</label>'+
     '<div class="opt '+(state.settings.carryMode==='accumulate'?'on':'')+'" data-c="accumulate"><span class="d" style="background:var(--g1)"></span>Платит за 12, сохраненное плюсом</div>'+
@@ -694,7 +714,7 @@ function rulesSheet(){
   openM();
   sh.querySelectorAll('[data-st]').forEach(function(o){o.onclick=function(){state.settings.subType=o.getAttribute('data-st');save();rulesSheet();};});
   sh.querySelectorAll('[data-c]').forEach(function(o){o.onclick=function(){state.settings.carryMode=o.getAttribute('data-c');sh.querySelectorAll('[data-c]').forEach(function(x){x.classList.remove('on');});o.classList.add('on');};});
-  document.getElementById('sv').onclick=function(){var _spm=document.getElementById('spm');if(_spm)state.settings.sessionsPerMonth=+_spm.value||12;state.settings.payDay=+document.getElementById('pd').value||5;save();closeM();render();};
+  document.getElementById('sv').onclick=function(){var _spm=document.getElementById('spm');if(_spm)state.settings.sessionsPerMonth=+_spm.value||12;state.settings.monthPrice=+document.getElementById('mprice').value||0;state.settings.payDay=+document.getElementById('pd').value||5;save();closeM();render();};
   document.getElementById('cl').onclick=closeM;
 }
 function personSheet(s,defGroup){
@@ -703,11 +723,12 @@ function personSheet(s,defGroup){
     '<label class="lbl">Имя и фамилия</label><input class="field" id="pn" value="'+(isNew?'':esc(s.name))+'" placeholder="Имя Фамилия">'+
     '<label class="lbl">Группа</label><select class="field" id="pg">'+state.groups.map(function(g){return '<option value="'+g.id+'" '+(((!isNew&&s.group===g.id)||(isNew&&defGroup===g.id))?'selected':'')+'>'+esc(g.name)+' · '+esc(g.level.split(" · ")[0])+'</option>';}).join('')+'</select>'+
     '<label class="lbl">Тип оплаты</label><select class="field" id="pt"><option value="monthly" '+(!isNew&&s.type==='monthly'?'selected':'')+'>'+(isMonthMode()?'Абонемент (месяц)':'Абонемент ('+SPM()+' занятий)')+'</option><option value="single" '+(!isNew&&s.type==='single'?'selected':'')+'>Разовая оплата</option></select>'+
+    '<label class="lbl">Стоимость абонемента, руб</label><input class="field" type="number" inputmode="numeric" id="ppr" value="'+(isNew?(+state.settings.monthPrice||''):(s.price||''))+'" placeholder="'+(+state.settings.monthPrice?('общая: '+(+state.settings.monthPrice)):'не задана')+'">'+
     '<label class="lbl">Телефон ученика</label><input class="field" id="pph" value="'+(isNew?'':esc(s.phone||''))+'" placeholder="+7 ...">'+
     '<label class="lbl">Телефон родителя</label><input class="field" id="ppp" value="'+(isNew?'':esc(s.parentPhone||''))+'" placeholder="+7 ...">'+
     '<button class="btn acc" id="sv">Сохранить</button>'+(isNew?'':'<button class="btn danger" id="del">Удалить ученика</button>')+'<div class="link" id="cl">Закрыть</div>';
   openM();
-  document.getElementById('sv').onclick=function(){var n=document.getElementById('pn').value.trim();if(!n)return;var g=+document.getElementById('pg').value,t=document.getElementById('pt').value,ph=document.getElementById('pph').value.trim(),pp=document.getElementById('ppp').value.trim();if(isNew){var nid=String(Date.now());state.students.push({id:nid,name:n,group:g,type:t,payments:[],attendance:{},phone:ph,parentPhone:pp});}else{s.name=n;s.group=g;s.type=t;s.phone=ph;s.parentPhone=pp;}save();closeM();render();};
+  document.getElementById('sv').onclick=function(){var n=document.getElementById('pn').value.trim();if(!n)return;var g=+document.getElementById('pg').value,t=document.getElementById('pt').value,ph=document.getElementById('pph').value.trim(),pp=document.getElementById('ppp').value.trim(),pr=+document.getElementById('ppr').value||null;if(isNew){var nid=String(Date.now());state.students.push({id:nid,name:n,group:g,type:t,payments:[],attendance:{},phone:ph,parentPhone:pp,price:pr});}else{s.name=n;s.group=g;s.type=t;s.phone=ph;s.parentPhone=pp;s.price=pr;}save();closeM();render();};
   var d=document.getElementById('del');if(d)d.onclick=function(){state.students=state.students.filter(function(x){return x.id!==s.id;});card=null;save();closeM();render();};
   document.getElementById('cl').onclick=closeM;
 }
@@ -758,7 +779,7 @@ function migrate(st){
   if(st.settings.subType!=='pack')st.settings.subType='month';st.groups=st.groups||[];st.students=st.students||[];st.ui=st.ui||{};
   st.groups.forEach(function(g){g.sessions=g.sessions||[];g.sessions.forEach(function(se){se.time=tnorm(se.time);se.dur=+se.dur||90;se.hall=se.hall||'';});});
   var ids=st.groups.map(function(g){return g.id;});
-  st.students.forEach(function(s){s.id=String(s.id);if(ids.indexOf(s.group)<0&&st.groups.length)s.group=st.groups[0].id;s.payments=s.payments||[];s.attendance=s.attendance||{};if(s.type!=='single')s.type='monthly';});
+  st.students.forEach(function(s){s.id=String(s.id);if(ids.indexOf(s.group)<0&&st.groups.length)s.group=st.groups[0].id;s.payments=s.payments||[];s.attendance=s.attendance||{};if(s.type!=='single')s.type='monthly';if(s.price!=null){s.price=+s.price||null;}s.payments=(s.payments||[]).map(function(p){return typeof p==='string'?{m:p,amt:null}:p;});});
   return st;
 }
 function boot(){
