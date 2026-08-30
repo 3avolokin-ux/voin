@@ -482,6 +482,7 @@ function renderGroups(v){
       if(!res.length){results.appendChild(el('<div class="empty">Никого не найдено</div>'));return;}
       res.forEach(function(s){var c=gcol(s.group);var r=el('<div class="prow"><div class="av">'+esc(ini(s.name))+'</div><div style="min-width:0"><div class="nm">'+esc(s.name)+'</div><div class="sb"><span class="gdot" style="display:inline-block;background:'+c+';margin-right:5px"></span>'+esc(grp(s.group).name)+' · '+(s.type==='single'?'разовый':balText(s))+'</div></div><div class="arr">›</div></div>');r.onclick=function(){openCard(s.id);};results.appendChild(r);});
     } else {
+      var pr=el('<div class="row2" style="margin-bottom:10px"><div><div class="t">Оплаты и сборы</div><div class="s">'+(function(){var now=new Date();var d=state.students.filter(function(s){return isDebtor(s,now);}).length;return d?('ждут оплату · '+d):'все оплачено';})()+'</div></div><div class="arr">›</div></div>');pr.onclick=function(){payView=true;render();};results.appendChild(pr);
       state.groups.forEach(function(g){results.appendChild(groupCard(g));});var ng=el('<button class="btn ghost">+ Новая группа</button>');ng.onclick=function(){groupEditSheet(null);};results.appendChild(ng);
     }
   }
