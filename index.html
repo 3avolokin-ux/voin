@@ -221,6 +221,18 @@
   [data-skin="garmin"] .nav button{text-transform:uppercase;letter-spacing:.5px}
   [data-skin="garmin"] .grp-line span,[data-skin="garmin"] .smeta,[data-skin="garmin"] .tl .m,[data-skin="garmin"] .att .ss{text-transform:uppercase;letter-spacing:.4px}
   [data-skin="garmin"] .tl .bar{width:4px}
+  .jwrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--card);box-shadow:var(--shadow)}
+  .jt{border-collapse:collapse;min-width:100%}
+  .jt th,.jt td{padding:9px 6px;text-align:center;font-size:13px;border-bottom:1px solid var(--line)}
+  .jt tbody tr:last-child td{border-bottom:none}
+  .jt .jn{position:sticky;left:0;background:var(--card);text-align:left;font-weight:600;max-width:128px;min-width:104px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:2;padding-left:11px}
+  .jt thead th{color:var(--mut);font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:.03em}
+  .jc{min-width:30px;font-weight:800;cursor:pointer;font-family:'JetBrains Mono',monospace}
+  .jc.present{color:var(--g1)} .jc.sick{color:var(--g2)} .jc.injury{color:var(--g3)} .jc.absent{color:var(--red)} .jc.none{color:var(--line2)}
+  .jt .js{font-weight:800}
+  .jnav{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .jnav .ttl{flex:1;text-align:center;font-weight:800;font-size:16px}
+  [data-skin="garmin"] .jwrap{border-radius:3px}
 </style>
 
 <div id="sync" style="position:fixed;inset:0;background:var(--bg);z-index:99;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px"><div style="font:800 22px/1 'Manrope',sans-serif;color:var(--ink)">VOIN TEAM</div><div style="color:var(--mut);font-size:13px;letter-spacing:.3px">Загрузка...</div></div>
@@ -270,6 +282,7 @@ function pad(n){return String(n).padStart(2,'0');}
 function mk(d){return d.getFullYear()+'-'+pad(d.getMonth()+1);}
 function dstr(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
 function nextMonthKey(m){var y=+m.slice(0,4),mo=+m.slice(5);mo++;if(mo>12){mo=1;y++;}return y+'-'+pad(mo);}
+function prevMonthKey(m){var y=+m.slice(0,4),mo=+m.slice(5);mo--;if(mo<1){mo=12;y--;}return y+'-'+pad(mo);}
 var WD=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
 var WDF=['ВОСКРЕСЕНЬЕ','ПОНЕДЕЛЬНИК','ВТОРНИК','СРЕДА','ЧЕТВЕРГ','ПЯТНИЦА','СУББОТА'];
 var MN=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
@@ -302,7 +315,7 @@ function isMissing(s,t){var lp=lastPresent(s);if(!lp)return (s.payments&&s.payme
 
 /* ---- хранилище ---- */
 var KEY='voin_v3', DKEY='voin_dirty', state=null;
-var FBDOC=null, fbReady=false, fbWriteT=null, fbApplying=false, fbSeq=0;
+var FBDOC=null, DBH=null, fbReady=false, fbWriteT=null, fbApplying=false, fbSeq=0;
 function isDirty(){try{return localStorage.getItem(DKEY)==='1';}catch(e){return false;}}
 function setDirty(v){try{if(v)localStorage.setItem(DKEY,'1');else localStorage.removeItem(DKEY);}catch(e){}}
 function canon(o){if(o===null||typeof o!=='object')return JSON.stringify(o);if(Array.isArray(o))return '['+o.map(canon).join(',')+']';return '{'+Object.keys(o).sort().map(function(k){return JSON.stringify(k)+':'+canon(o[k]);}).join(',')+'}';}
@@ -359,17 +372,17 @@ function humanD(ds){var d=new Date(ds+'T00:00:00');return d.getDate()+' '+MN[d.g
 function endTime(se){var tp=tparts(se.time),t=tp[0]*60+tp[1]+(+se.dur||0);return pad(Math.floor(t/60)%24)+':'+pad(t%60);}
 
 /* ---- рендер ---- */
-var tab='today', roster=null, card=null, groupView=null, payView=false, listView=null;
+var tab='today', roster=null, card=null, groupView=null, payView=false, listView=null, journalView=null;
 function setHeader(){var now=new Date();document.getElementById('eyebrow').textContent=WDF[now.getDay()]+' · '+now.getDate()+' '+MN[now.getMonth()];
-  var t=roster?'Отметка':card?'Карточка':listView?listView.title:payView?'Оплаты':groupView?grp(groupView).name:(tab==='today'?'Сегодня':tab==='groups'?'Группы':tab==='schedule'?'Расписание':'Ещё');
+  var t=roster?'Отметка':card?'Карточка':journalView?'Журнал':listView?listView.title:payView?'Оплаты':groupView?grp(groupView).name:(tab==='today'?'Сегодня':tab==='groups'?'Группы':tab==='schedule'?'Расписание':'Ещё');
   document.getElementById('title').textContent=t;}
 function render(){var old=document.querySelector('.savebar');if(old)old.remove();var v=document.getElementById('view');v.innerHTML='';setHeader();
-  if(card){renderCard(v);return;} if(roster){renderRoster(v);return;} if(listView){renderList(v);return;} if(payView){renderPay(v);return;} if(groupView){renderGroupDetail(v);return;}
+  if(card){renderCard(v);return;} if(roster){renderRoster(v);return;} if(journalView){renderJournal(v);return;} if(listView){renderList(v);return;} if(payView){renderPay(v);return;} if(groupView){renderGroupDetail(v);return;}
   if(tab==='today')renderToday(v);else if(tab==='groups')renderGroups(v);else if(tab==='schedule')renderSchedule(v);else renderSettings(v);
   updateBadges();
 }
 function updateBadges(){document.querySelectorAll('.nav .dot').forEach(function(x){x.remove();});}
-function go(t,pay){tab=t;state.ui.q='';roster=null;card=null;groupView=null;listView=null;payView=!!pay;document.querySelectorAll('.nav button').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-t')===t);});render();}
+function go(t,pay){tab=t;state.ui.q='';roster=null;card=null;groupView=null;listView=null;journalView=null;payView=!!pay;document.querySelectorAll('.nav button').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-t')===t);});render();}
 function openList(title,students,subfn){listView={title:title,ids:students.map(function(s){return s.id;}),subfn:subfn};card=null;roster=null;payView=false;groupView=null;render();}
 function renderList(v){
   v.appendChild((function(){var h=el('<div class="rhead"><button class="rback">‹</button><div class="rtitle"><div class="rs">'+listView.ids.length+' человек · назад</div></div></div>');h.querySelector('.rback').onclick=function(){listView=null;render();};return h;})());
@@ -522,6 +535,7 @@ function renderGroupDetail(v){
     '<div class="stat" style="display:flex;flex-direction:column;justify-content:center"><div class="n mono" style="color:var(--orange)">'+deb.length+'</div><div class="l">долгов</div></div></div>'));
   // отметить явку
   var mb=el('<button class="btn acc" style="background:'+c+';margin-top:0">Отметить явку</button>');mb.onclick=function(){openRoster(g.id,dstr(now));};v.appendChild(mb);
+  var jb=el('<button class="btn ghost" style="margin-top:8px">Журнал посещений</button>');jb.onclick=function(){openJournal(g.id);};v.appendChild(jb);
   // оплаты группы
   var unp=list.filter(function(s){return unpaid(s,now);});v.appendChild(el('<h2 class="sec">Оплаты'+(unp.length?'<span class="cnt">'+unp.length+'</span>':'')+'</h2>'));
   if(!unp.length)v.appendChild(el('<div class="att"><div class="ic ok">✓</div><div><div class="tt">Все оплатили</div><div class="ss">За '+MNF[+mk(now).slice(5)]+' оплатили все</div></div></div>'));
@@ -536,6 +550,39 @@ function renderGroupDetail(v){
   var s1=el('<div class="row2"><div><div class="t">Название и уровень</div><div class="s">'+esc(g.name)+' · '+esc(g.level)+'</div></div><div class="arr">›</div></div>');s1.onclick=function(){groupEditSheet(g);};v.appendChild(s1);
   var days=g.sessions.map(function(se){return WD[se.wd]+' '+se.time;}).join(' · ')||'не задано';
   var s2=el('<div class="row2"><div><div class="t">Расписание</div><div class="s">'+esc(days)+'</div></div><div class="arr">›</div></div>');s2.onclick=function(){schedSheet(g);};v.appendChild(s2);if(list.length&&state.groups.length>1){var sm=el('<div class="row2"><div><div class="t">Перенести участников</div><div class="s">в другую группу</div></div><div class="arr">›</div></div>');sm.onclick=function(){moveSheet(g);};v.appendChild(sm);}var s3=el('<div class="row2"><div><div class="t" style="color:var(--red)">Удалить группу</div><div class="s">'+(list.length?('вместе с учениками · '+list.length+' чел'):'группа пустая')+'</div></div><div class="arr">›</div></div>');s3.onclick=function(){confirmDelGroup(g);};v.appendChild(s3);
+}
+
+/* Журнал группы (сетка как бумажная тетрадь) */
+function openJournal(gid){journalView={gid:gid,month:mk(new Date())};card=null;roster=null;render();}
+function renderJournal(v){
+  var jv=journalView,g=grp(jv.gid);if(!g){journalView=null;render();return;}
+  var now=new Date(),curM=mk(now),y=+jv.month.slice(0,4),mo=+jv.month.slice(5);
+  var head=el('<div class="rhead"><button class="rback">‹</button><div class="rtitle"><div class="rt">Журнал · '+esc(g.name)+'</div><div class="rs">тап по клетке ставит или меняет отметку</div></div></div>');
+  head.querySelector('.rback').onclick=function(){var gid=jv.gid;journalView=null;groupView=gid;render();};v.appendChild(head);
+  var sw=el('<div class="jnav"><button class="rback" id="jprev">‹</button><div class="ttl">'+MNF[mo]+' '+y+'</div><button class="rback" id="jnext"'+(jv.month>=curM?' disabled style="opacity:.3"':'')+'>›</button></div>');
+  sw.querySelector('#jprev').onclick=function(){jv.month=prevMonthKey(jv.month);render();};
+  sw.querySelector('#jnext').onclick=function(){if(jv.month<curM){jv.month=nextMonthKey(jv.month);render();}};
+  v.appendChild(sw);
+  var list=inGroup(g.id);
+  if(!list.length){v.appendChild(el('<div class="empty">В группе нет учеников</div>'));return;}
+  var wds={};g.sessions.forEach(function(se){wds[se.wd]=1;});
+  var days=new Date(y,mo,0).getDate(),dates=[];
+  for(var d=1;d<=days;d++){var dt=new Date(y,mo-1,d),ds=dstr(dt);if(ds>dstr(now))continue;var has=!!wds[dt.getDay()];
+    if(!has){for(var i=0;i<list.length;i++){if((list[i].attendance||{})[ds]){has=true;break;}}}
+    if(has)dates.push(ds);}
+  if(!dates.length){v.appendChild(el('<div class="empty">В этом месяце занятий не было</div>'));return;}
+  var html='<div class="jwrap"><table class="jt"><thead><tr><th class="jn">Ученик</th>';
+  dates.forEach(function(ds){html+='<th class="jd">'+(+ds.slice(8))+'</th>';});
+  html+='<th class="js">Был</th></tr></thead><tbody>';
+  list.forEach(function(s){var cnt=0;html+='<tr><td class="jn">'+esc(s.name)+'</td>';
+    dates.forEach(function(ds){var m=(s.attendance||{})[ds]||'';var sym=m==='present'?'✓':m==='sick'?'С':m==='injury'?'Т':m==='absent'?'✕':'·';if(m==='present')cnt++;
+      html+='<td class="jc '+(m||'none')+'" data-sid="'+s.id+'" data-d="'+ds+'">'+sym+'</td>';});
+    html+='<td class="js mono">'+cnt+'</td></tr>';});
+  html+='</tbody></table></div>';
+  var t=el(html);
+  t.querySelectorAll('.jc').forEach(function(td){td.onclick=function(){var s=state.students.filter(function(x){return x.id===td.getAttribute('data-sid');})[0];if(s)statusSheet(s,td.getAttribute('data-d'));};});
+  v.appendChild(t);
+  v.appendChild(el('<div class="muted" style="margin-top:9px">✓ был · С справка · Т травма · ✕ не был · точка нет отметки. Стрелками наверху листается архив по месяцам.</div>'));
 }
 
 /* Расписание (лента по датам) */
@@ -625,6 +672,11 @@ function renderSettings(v){
   if(!isMonthMode())v.appendChild((function(){var r=el('<div class="row2"><div><div class="t">День оплаты</div><div class="s">после этого числа неоплатившие в должниках</div></div><div class="v mono" style="font-weight:800">'+state.settings.payDay+'</div></div>');r.onclick=function(){rulesSheet();};return r;})());
   if(!isMonthMode())v.appendChild((function(){var r=el('<div class="row2"><div><div class="t">Перенос остатка</div><div class="s">'+(state.settings.carryMode==='accumulate'?'платит за 12, сохраненное идет плюсом':'платит меньшей суммой до 12')+'</div></div><div class="arr">›</div></div>');r.onclick=function(){rulesSheet();};return r;})());
 
+  v.appendChild(el('<h2 class="sec">Резервная копия</h2>'));
+  if(FIREBASE_ENABLED){var bb=el('<div class="row2"><div><div class="t">Копии в облаке</div><div class="s">автоматически · последние 7 дней</div></div><div class="arr">›</div></div>');bb.onclick=function(){backupSheet();};v.appendChild(bb);}
+  var be=el('<div class="row2"><div><div class="t">Скачать копию данных</div><div class="s">файл сохранится на телефон</div></div><div class="arr">›</div></div>');be.onclick=function(){exportBackup();};v.appendChild(be);
+  var bi=el('<div class="row2"><div><div class="t">Восстановить из файла</div><div class="s">загрузить скачанную копию</div></div><div class="arr">›</div></div>');bi.onclick=function(){importBackup();};v.appendChild(bi);
+
   v.appendChild(el('<h2 class="sec">О приложении</h2>'));
   var synced=FIREBASE_ENABLED&&fbReady&&FBDOC;
   v.appendChild(el('<div class="row2"><div><div class="t">VOIN TEAM · дневник тренера</div><div class="s">'+(synced?'облако · синхронизация включена':'данные хранятся на этом устройстве')+'</div></div></div>'));
@@ -646,9 +698,9 @@ function markSheet(){
   sh.querySelectorAll('[data-g]').forEach(function(o){o.onclick=function(){closeM();openRoster(+o.getAttribute('data-g'),dstr(new Date()));};});
   document.getElementById('cl').onclick=closeM;
 }
-function statusSheet(s){
-  var sh=document.getElementById('sheet');
-  sh.innerHTML='<h3>'+esc(s.name)+'</h3><div class="muted">Статус на '+humanD(roster.date)+'. '+(isMonthMode()?'Отметки идут в историю и посещаемость.':'«Был» и «Не был» списывают занятие, справка и травма сохраняют.')+'</div>'+
+function statusSheet(s,dt){
+  var sh=document.getElementById('sheet'),sdate=dt||roster.date;
+  sh.innerHTML='<h3>'+esc(s.name)+'</h3><div class="muted">Статус на '+humanD(sdate)+'. '+(isMonthMode()?'Отметки идут в историю и посещаемость.':'«Был» и «Не был» списывают занятие, справка и травма сохраняют.')+'</div>'+
     '<div class="opt" data-k="present"><span class="d" style="background:var(--g1)"></span>Был на тренировке</div>'+
     '<div class="opt" data-k="sick"><span class="d" style="background:var(--g2)"></span>Пропуск по справке</div>'+
     '<div class="opt" data-k="injury"><span class="d" style="background:var(--g3)"></span>Травма</div>'+
@@ -657,7 +709,7 @@ function statusSheet(s){
     '<div class="opt" id="opencard"><span class="d" style="background:var(--mut)"></span>Открыть карточку ученика</div>'+
     '<div class="link" id="cl">Закрыть</div>';
   openM();
-  sh.querySelectorAll('.opt[data-k]').forEach(function(o){o.onclick=function(){var k=o.getAttribute('data-k');if(!s.attendance)s.attendance={};if(k==='clear')delete s.attendance[roster.date];else s.attendance[roster.date]=k;save();closeM();render();};});
+  sh.querySelectorAll('.opt[data-k]').forEach(function(o){o.onclick=function(){var k=o.getAttribute('data-k');if(!s.attendance)s.attendance={};if(k==='clear')delete s.attendance[sdate];else s.attendance[sdate]=k;save();closeM();render();};});
   document.getElementById('opencard').onclick=function(){closeM();openCard(s.id);};
   document.getElementById('cl').onclick=closeM;
 }
@@ -748,7 +800,7 @@ function personSheet(s,defGroup){
   document.getElementById('cl').onclick=closeM;
 }
 
-document.querySelectorAll('.nav button').forEach(function(b){b.onclick=function(){tab=b.getAttribute('data-t');state.ui.q='';roster=null;card=null;groupView=null;payView=false;listView=null;document.querySelectorAll('.nav button').forEach(function(x){x.classList.remove('on');});b.classList.add('on');render();};});
+document.querySelectorAll('.nav button').forEach(function(b){b.onclick=function(){tab=b.getAttribute('data-t');state.ui.q='';roster=null;card=null;groupView=null;payView=false;listView=null;journalView=null;document.querySelectorAll('.nav button').forEach(function(x){x.classList.remove('on');});b.classList.add('on');render();};});
 
 /* ===== Firebase ===== */
 function showLogin(auth){
@@ -765,7 +817,7 @@ function showSync(){var s=document.getElementById('sync');if(s)s.style.display='
 function hideSync(){var s=document.getElementById('sync');if(s)s.style.display='none';}
 function initFirebase(){
   try{firebase.initializeApp(FIREBASE_CONFIG);}catch(e){}
-  var auth=firebase.auth(),db=firebase.firestore();
+  var auth=firebase.auth(),db=firebase.firestore();DBH=db;
   try{db.enablePersistence({synchronizeTabs:true}).catch(function(){});}catch(e){}
   var gate=setTimeout(function(){if(!FBDOC){hideSync();showLogin(auth);}},10000);
   auth.onAuthStateChanged(function(user){
@@ -785,7 +837,7 @@ function initFirebase(){
         if(canon(d)===canon(state))return;
         fbApplying=true;state=migrate(d);saveLocal();applyTheme();render();fbApplying=false;
       }catch(e){fbApplying=false;}
-      finally{hideSync();}
+      finally{hideSync();maybeBackup();}
     },function(e){fbReady=true;clearTimeout(tmo);hideSync();});
   });
 }
@@ -797,6 +849,34 @@ function migrate(st){
   st.students.forEach(function(s){s.id=String(s.id);if(ids.indexOf(s.group)<0&&st.groups.length)s.group=st.groups[0].id;s.payments=s.payments||[];s.attendance=s.attendance||{};if(s.type!=='single')s.type='monthly';if(s.price!=null){s.price=+s.price||null;}s.payments=(s.payments||[]).map(function(p){return typeof p==='string'?{m:p,amt:null}:p;});if(s.type==='monthly'&&!s.paidUntil){var lastM=s.payments.map(function(p){return p.m||'';}).filter(Boolean).sort().pop();if(lastM){s.paidUntil=dstr(new Date(+lastM.slice(0,4),+lastM.slice(5,7),0));}}});
   return st;
 }
+function maybeBackup(){try{if(!DBH||!fbReady||!FBDOC)return;var today=dstr(new Date());if(localStorage.getItem('voin_bak_day')===today)return;
+  DBH.collection('voin').doc('backup_'+new Date().getDay()).set({at:today,data:JSON.stringify(state)}).then(function(){try{localStorage.setItem('voin_bak_day',today);}catch(e){}}).catch(function(){});}catch(e){}}
+function exportBackup(){try{var blob=new Blob([JSON.stringify(state,null,1)],{type:'application/json'});var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='voin_backup_'+dstr(new Date())+'.json';document.body.appendChild(a);a.click();setTimeout(function(){a.remove();},500);}catch(e){}}
+function importBackup(){var inp=document.createElement('input');inp.type='file';inp.accept='.json,application/json';
+  inp.onchange=function(){var f=inp.files&&inp.files[0];if(!f)return;var r=new FileReader();
+    r.onload=function(){var d=null;try{d=JSON.parse(r.result);}catch(e){}
+      if(!(d&&d.groups&&d.students)){var sh=document.getElementById('sheet');sh.innerHTML='<h3>Не получилось</h3><div class="muted">Это не файл копии приложения. Нужен файл voin_backup_...json, скачанный кнопкой «Скачать копию данных».</div><div class="link" id="cc">Закрыть</div>';openM();document.getElementById('cc').onclick=closeM;return;}
+      confirmRestore(d,'из файла');};
+    r.readAsText(f);};
+  inp.click();}
+function confirmRestore(d,label){var sh=document.getElementById('sheet');
+  sh.innerHTML='<h3>Восстановить '+label+'?</h3><div class="muted">Текущие данные будут заменены. Сейчас: '+state.groups.length+' групп, '+state.students.length+' учеников. Станет: '+(d.groups||[]).length+' групп, '+(d.students||[]).length+' учеников.</div>'+
+    '<button class="btn danger" id="rst">Восстановить</button><div class="link" id="cc">Отмена</div>';
+  openM();
+  document.getElementById('rst').onclick=function(){state=migrate(JSON.parse(JSON.stringify(d)));saveLocal();applyTheme();fbSeq++;setDirty(true);if(fbReady&&FBDOC){clearTimeout(fbWriteT);fbFlush();}closeM();render();};
+  document.getElementById('cc').onclick=closeM;}
+function backupSheet(){var sh=document.getElementById('sheet');
+  sh.innerHTML='<h3>Копии в облаке</h3><div class="muted">Сохраняются автоматически раз в день, хранятся последние 7 дней. Тап по копии восстанавливает её.</div><div id="bklist"><div class="empty">Загрузка...</div></div><div class="link" id="cl">Закрыть</div>';
+  openM();document.getElementById('cl').onclick=closeM;
+  if(!DBH||!fbReady){document.getElementById('bklist').innerHTML='<div class="empty">Нет связи с облаком</div>';return;}
+  Promise.all([0,1,2,3,4,5,6].map(function(i){return DBH.collection('voin').doc('backup_'+i).get().catch(function(){return null;});})).then(function(snaps){
+    var items=[];snaps.forEach(function(sn){if(sn&&sn.exists){var d=sn.data();try{var st=JSON.parse(d.data);items.push({at:d.at,g:(st.groups||[]).length,s:(st.students||[]).length,data:st});}catch(e){}}});
+    items.sort(function(a,b){return a.at<b.at?1:-1;});
+    var box=document.getElementById('bklist');if(!box)return;
+    if(!items.length){box.innerHTML='<div class="empty">Копий пока нет, первая создастся сама при следующем входе.</div>';return;}
+    box.innerHTML=items.map(function(it,i){return '<div class="row2" data-bk="'+i+'"><div><div class="t">'+humanD(it.at)+'</div><div class="s">'+it.g+' групп · '+it.s+' учеников</div></div><div class="arr">›</div></div>';}).join('');
+    box.querySelectorAll('[data-bk]').forEach(function(r){r.onclick=function(){confirmRestore(items[+r.getAttribute('data-bk')].data,'копию за '+humanD(items[+r.getAttribute('data-bk')].at));};});
+  });}
 function boot(){
   state=migrate(localLoad()||seed());saveLocal();
   applyTheme();render();
