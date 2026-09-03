@@ -275,6 +275,7 @@ var FIREBASE_CONFIG = {
   appId: "1:32937303865:web:a1d40eb2f8e9f3101492e8"
 };
 var FIREBASE_ENABLED = !!(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId);
+var BUILD='сборка 7 · 3 сентября 2026';
 function gidx(gid){for(var i=0;i<state.groups.length;i++){if(state.groups[i].id===gid)return i;}return 0;}
 function gvar(gid){return '--g'+((gidx(gid)%6)+1);}
 function gcol(gid){return getComputedStyle(document.documentElement).getPropertyValue(gvar(gid)).trim()||'#888';}
@@ -430,8 +431,8 @@ function attn(ic,icon,tt,ss,cb){var r=el('<div class="att"><div class="ic '+ic+'
 /* Оплаты */
 function dueMonthKey(s){var pt=paidThrough(s),cur=mk(new Date());if(!pt)return cur;var n=nextMonthKey(pt);return n>cur?n:cur;}
 function payNow(s){payMonthsAdd(s,1);save();render();}
-function payMonthsAdd(s,n){if(!s.payments)s.payments=[];var today=dstr(new Date());
-  if(isMonthMode()){var base=(s.paidUntil&&s.paidUntil>=today)?s.paidUntil:today;var nu=addMonthsD(base,n);s.payments.push({at:today,amt:(priceOf(s)*n)||null,months:n,prevUntil:s.paidUntil||null});s.paidUntil=nu;}
+function payMonthsAdd(s,n,from){if(!s.payments)s.payments=[];var today=dstr(new Date()),d0=from||today;
+  if(isMonthMode()){var base=(s.paidUntil&&s.paidUntil>=d0)?s.paidUntil:d0;var nu=addMonthsD(base,n);s.payments.push({at:d0,amt:(priceOf(s)*n)||null,months:n,prevUntil:s.paidUntil||null});s.paidUntil=nu;}
   else{monthsChain(dueMonthKey(s),n).forEach(function(m){s.payments.push({m:m,amt:priceOf(s)||null});});}}
 function undoPay(s){var ps=s.payments||[];if(!ps.length)return;
   if(isMonthMode()){var last=ps[ps.length-1];ps.pop();if(last&&typeof last==='object'&&last.at!==undefined&&('prevUntil' in last))s.paidUntil=last.prevUntil||null;else s.paidUntil=s.paidUntil?addMonthsD(s.paidUntil,-1):null;}
@@ -679,7 +680,7 @@ function renderSettings(v){
 
   v.appendChild(el('<h2 class="sec">О приложении</h2>'));
   var synced=FIREBASE_ENABLED&&fbReady&&FBDOC;
-  v.appendChild(el('<div class="row2"><div><div class="t">VOIN TEAM · дневник тренера</div><div class="s">'+(synced?'облако · синхронизация включена':'данные хранятся на этом устройстве')+'</div></div></div>'));
+  v.appendChild(el('<div class="row2"><div><div class="t">VOIN TEAM · дневник тренера</div><div class="s">'+(synced?'облако · синхронизация включена':'данные хранятся на этом устройстве')+' · '+BUILD+'</div></div></div>'));
   if(FIREBASE_ENABLED&&typeof firebase!=='undefined'&&firebase.auth&&firebase.auth().currentUser){
     var out=el('<button class="btn danger">Выйти из аккаунта</button>');out.onclick=function(){try{firebase.auth().signOut();}catch(e){}};v.appendChild(out);
   }
@@ -715,18 +716,19 @@ function statusSheet(s,dt){
 }
 function monthsChain(start,n){var arr=[],cur=start;for(var i=0;i<n;i++){arr.push(cur);cur=nextMonthKey(cur);}return arr;}
 function paySheet(s){
-  var sh=document.getElementById('sheet'),n=1;
+  var sh=document.getElementById('sheet'),n=1,payDate=dstr(new Date());
   function draw(){
     var now=new Date(),today=dstr(now),pt=paidThrough(s),hasPay=(s.payments||[]).length>0,info;
-    if(isMonthMode()){var base=(s.paidUntil&&s.paidUntil>=today)?s.paidUntil:today;var nu=addMonthsD(base,n);
+    if(isMonthMode()){var base=(s.paidUntil&&s.paidUntil>=payDate)?s.paidUntil:payDate;var nu=addMonthsD(base,n);
       info='<div class="row2" style="margin-bottom:12px"><div><div class="t">Будет оплачен до</div><div class="s">'+(s.paidUntil?('сейчас до '+humanD(s.paidUntil)):'сейчас не оплачен')+'</div></div><div class="v mono" style="font-weight:800">'+humanD(nu)+'</div></div>';}
     else{info='<div class="row2" style="margin-bottom:12px"><div><div class="t">Месяцы</div><div class="s" id="mlabel">'+monthsChain(dueMonthKey(s),n).map(function(m){return MNF[+m.slice(5)];}).join(', ')+'</div></div><div class="v mono" style="font-weight:800">'+((SPM()*n))+' зан.</div></div>';}
     sh.innerHTML='<h3>Оплата · '+esc(s.name)+'</h3><div class="muted">'+(isMonthMode()?'Абонемент на месяц с даты оплаты.':'Абонемент '+SPM()+' занятий в месяц.')+' Выбери, за сколько месяцев оплатил. Деньги остаются у тебя.</div>'+
-      '<div class="seg" id="mseg"><button data-m="1">1 месяц</button><button data-m="2">2 месяца</button><button data-m="3">3 месяца</button></div>'+info+
+      '<div class="seg" id="mseg"><button data-m="1">1 месяц</button><button data-m="2">2 месяца</button><button data-m="3">3 месяца</button></div>'+(isMonthMode()?'<label class="lbl">Дата оплаты (можно задним числом)</label><input class="field" type="date" id="pdate" value="'+payDate+'">':'')+info+
       (priceOf(s)?'<div class="row2" style="margin-bottom:12px"><div><div class="t">К оплате</div><div class="s">сумма запишется в отчет</div></div><div class="v mono" style="font-weight:800">'+rub(priceOf(s)*n)+'</div></div>':'')+
       '<button class="btn acc" id="do">Оплатил за '+n+' '+(n===1?'месяц':(n<5?'месяца':'месяцев'))+'</button>'+(hasPay?'<button class="btn ghost" id="un">Отменить последнюю оплату</button>':'')+'<div class="link" id="cl">Закрыть</div>';
     sh.querySelectorAll('#mseg button').forEach(function(b){if(+b.getAttribute('data-m')===n)b.classList.add('on');b.onclick=function(){n=+b.getAttribute('data-m');draw();};});
-    document.getElementById('do').onclick=function(){payMonthsAdd(s,n);save();closeM();render();};
+    var pdI=document.getElementById('pdate');if(pdI)pdI.onchange=function(){payDate=pdI.value||dstr(new Date());draw();};
+    document.getElementById('do').onclick=function(){payMonthsAdd(s,n,isMonthMode()?payDate:null);save();closeM();render();};
     var u=document.getElementById('un');if(u)u.onclick=function(){undoPay(s);save();closeM();render();};
     document.getElementById('cl').onclick=closeM;
   }
