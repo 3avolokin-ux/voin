@@ -275,7 +275,7 @@ var FIREBASE_CONFIG = {
   appId: "1:32937303865:web:a1d40eb2f8e9f3101492e8"
 };
 var FIREBASE_ENABLED = !!(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId);
-var BUILD='сборка 7 · 3 сентября 2026';
+var BUILD='сборка 8 · 16 сентября 2026';
 function gidx(gid){for(var i=0;i<state.groups.length;i++){if(state.groups[i].id===gid)return i;}return 0;}
 function gvar(gid){return '--g'+((gidx(gid)%6)+1);}
 function gcol(gid){return getComputedStyle(document.documentElement).getPropertyValue(gvar(gid)).trim()||'#888';}
@@ -792,12 +792,12 @@ function personSheet(s,defGroup){
     '<label class="lbl">Имя и фамилия</label><input class="field" id="pn" value="'+(isNew?'':esc(s.name))+'" placeholder="Имя Фамилия">'+
     '<label class="lbl">Группа</label><select class="field" id="pg">'+state.groups.map(function(g){return '<option value="'+g.id+'" '+(((!isNew&&s.group===g.id)||(isNew&&defGroup===g.id))?'selected':'')+'>'+esc(g.name)+' · '+esc(g.level.split(" · ")[0])+'</option>';}).join('')+'</select>'+
     '<label class="lbl">Тип оплаты</label><select class="field" id="pt"><option value="monthly" '+(!isNew&&s.type==='monthly'?'selected':'')+'>'+(isMonthMode()?'Абонемент (месяц)':'Абонемент ('+SPM()+' занятий)')+'</option><option value="single" '+(!isNew&&s.type==='single'?'selected':'')+'>Разовая оплата</option></select>'+
-    '<label class="lbl">Стоимость абонемента, руб</label><input class="field" type="number" inputmode="numeric" id="ppr" value="'+(isNew?(+state.settings.monthPrice||''):(s.price||''))+'" placeholder="'+(+state.settings.monthPrice?('общая: '+(+state.settings.monthPrice)):'не задана')+'">'+
+    (isMonthMode()?'<label class="lbl">Оплачен до (дата действующего абонемента)</label><input class="field" type="date" id="ppu" value="'+(isNew?'':(s.paidUntil||''))+'">':'')+'<label class="lbl">Стоимость абонемента, руб</label><input class="field" type="number" inputmode="numeric" id="ppr" value="'+(isNew?(+state.settings.monthPrice||''):(s.price||''))+'" placeholder="'+(+state.settings.monthPrice?('общая: '+(+state.settings.monthPrice)):'не задана')+'">'+
     '<label class="lbl">Телефон ученика</label><input class="field" id="pph" value="'+(isNew?'':esc(s.phone||''))+'" placeholder="+7 ...">'+
     '<label class="lbl">Телефон родителя</label><input class="field" id="ppp" value="'+(isNew?'':esc(s.parentPhone||''))+'" placeholder="+7 ...">'+
     '<button class="btn acc" id="sv">Сохранить</button>'+(isNew?'':'<button class="btn danger" id="del">Удалить ученика</button>')+'<div class="link" id="cl">Закрыть</div>';
   openM();
-  document.getElementById('sv').onclick=function(){var n=document.getElementById('pn').value.trim();if(!n)return;var g=+document.getElementById('pg').value,t=document.getElementById('pt').value,ph=document.getElementById('pph').value.trim(),pp=document.getElementById('ppp').value.trim(),pr=+document.getElementById('ppr').value||null;if(isNew){var nid=String(Date.now());state.students.push({id:nid,name:n,group:g,type:t,payments:[],attendance:{},phone:ph,parentPhone:pp,price:pr});}else{s.name=n;s.group=g;s.type=t;s.phone=ph;s.parentPhone=pp;s.price=pr;}save();closeM();render();};
+  document.getElementById('sv').onclick=function(){var n=document.getElementById('pn').value.trim();if(!n)return;var g=+document.getElementById('pg').value,t=document.getElementById('pt').value,ph=document.getElementById('pph').value.trim(),pp=document.getElementById('ppp').value.trim(),pr=+document.getElementById('ppr').value||null;var puI=document.getElementById('ppu'),pu=puI?(puI.value||null):undefined;if(isNew){var nid=String(Date.now());var st={id:nid,name:n,group:g,type:t,payments:[],attendance:{},phone:ph,parentPhone:pp,price:pr};if(pu)st.paidUntil=pu;state.students.push(st);}else{s.name=n;s.group=g;s.type=t;s.phone=ph;s.parentPhone=pp;s.price=pr;if(pu!==undefined)s.paidUntil=pu;}save();closeM();render();};
   var d=document.getElementById('del');if(d)d.onclick=function(){state.students=state.students.filter(function(x){return x.id!==s.id;});card=null;save();closeM();render();};
   document.getElementById('cl').onclick=closeM;
 }
